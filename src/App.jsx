@@ -13,6 +13,23 @@ const DEFAULT_PRESETS = [
   { id: 'demo', name: 'Demo Data', teamId: '', projectIds: [] },
 ];
 
+// Parse VITE_APP_USERS secret: "alice:pass1,bob:pass2"
+// Returns null when the var isn't set (dev/unconfigured).
+function parseUserList() {
+  const raw = import.meta.env.VITE_APP_USERS || '';
+  if (!raw.trim()) return null;
+  const users = {};
+  raw.split(',').forEach(entry => {
+    const colon = entry.indexOf(':');
+    if (colon > 0) {
+      users[entry.slice(0, colon).trim()] = entry.slice(colon + 1).trim();
+    }
+  });
+  return Object.keys(users).length ? users : null;
+}
+
+const USER_LIST = parseUserList();
+
 function loadFromStorage(key, fallback) {
   try {
     const s = localStorage.getItem(key);
@@ -33,6 +50,7 @@ function getISOWeekLabel(dateStr) {
 
 export default function App() {
   // ─── Auth ───
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState('');
@@ -68,10 +86,19 @@ export default function App() {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (password === 'velocity') {
+    if (!USER_LIST) {
+      // No user list configured — allow access in dev, block in prod
+      if (import.meta.env.DEV) {
+        setIsAuthenticated(true);
+      } else {
+        setAuthError('No users configured. Add VITE_APP_USERS to GitHub Secrets.');
+      }
+      return;
+    }
+    if (USER_LIST[username.trim()] === password) {
       setIsAuthenticated(true);
     } else {
-      setAuthError('Incorrect password');
+      setAuthError('Invalid username or password.');
     }
   };
 
@@ -296,19 +323,41 @@ export default function App() {
     return (
       <div className="login-screen">
         <div className="glass-card login-card">
-          <h2>VelocityMAX</h2>
+          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>VelocityMAX</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+            Sign in to access your dashboard
+          </p>
           <form onSubmit={handleLogin}>
+            {USER_LIST && (
+              <div className="input-group">
+                <input
+                  type="text"
+                  placeholder="Username"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  autoComplete="username"
+                  autoFocus
+                />
+              </div>
+            )}
             <div className="input-group">
               <input
                 type="password"
-                placeholder="Enter password"
+                placeholder="Password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                autoComplete="current-password"
+                autoFocus={!USER_LIST}
               />
             </div>
-            {authError && <p style={{ color: 'var(--chart-red)', marginBottom: '1rem' }}>{authError}</p>}
-            <button type="submit">Access Dashboard</button>
+            {authError && <p style={{ color: 'var(--chart-red)', marginBottom: '1rem', fontSize: '0.875rem' }}>{authError}</p>}
+            <button type="submit">Sign In</button>
           </form>
+          {import.meta.env.DEV && !USER_LIST && (
+            <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              Dev mode — set VITE_APP_USERS in .env.local to test auth
+            </p>
+          )}
         </div>
       </div>
     );
