@@ -110,9 +110,6 @@ export default function App() {
     setData(null);
     setSelectedProject('All');
     setSelectedAssignee('All');
-    setSelectedCurrentStatuses([]);
-    setDateFrom('');
-    setDateTo('');
 
     if (!preset.teamId || !key) {
       try {
