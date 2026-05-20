@@ -1,50 +1,128 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { fetchTeams, fetchProjects } from './linearApi';
 
-function PresetForm({ preset, onSave, onCancel }) {
+function PresetForm({ preset, apiKey, onSave, onCancel }) {
   const [name, setName] = useState(preset?.name || '');
   const [teamId, setTeamId] = useState(preset?.teamId || '');
-  const [projectIds, setProjectIds] = useState(preset?.projectIds?.join(', ') || '');
+  const [teamName, setTeamName] = useState(preset?.teamName || '');
+  const [projectIds, setProjectIds] = useState(preset?.projectIds || []);
+
+  const [teams, setTeams] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [loadingTeams, setLoadingTeams] = useState(false);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [fetchError, setFetchError] = useState('');
+
+  // Load teams when form opens (if API key is available)
+  useEffect(() => {
+    if (!apiKey) return;
+    setLoadingTeams(true);
+    setFetchError('');
+    fetchTeams(apiKey)
+      .then(setTeams)
+      .catch(err => setFetchError(err.message))
+      .finally(() => setLoadingTeams(false));
+  }, [apiKey]);
+
+  // Load projects when team changes
+  useEffect(() => {
+    if (!apiKey || !teamId) { setProjects([]); return; }
+    setLoadingProjects(true);
+    fetchProjects(apiKey, teamId)
+      .then(list => {
+        setProjects(list);
+        // Drop any selected project IDs that don't exist in this team
+        setProjectIds(prev => prev.filter(id => list.some(p => p.id === id)));
+      })
+      .catch(() => setProjects([]))
+      .finally(() => setLoadingProjects(false));
+  }, [apiKey, teamId]);
+
+  const handleTeamChange = (e) => {
+    const id = e.target.value;
+    const selected = teams.find(t => t.id === id);
+    setTeamId(id);
+    setTeamName(selected?.name || '');
+    setProjectIds([]);
+  };
+
+  const toggleProject = (id) => {
+    setProjectIds(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+  };
 
   const handleSave = () => {
     if (!name.trim()) return;
+    const selectedProjects = projects.filter(p => projectIds.includes(p.id));
     onSave({
       id: preset?.id || Date.now().toString(),
       name: name.trim(),
-      teamId: teamId.trim(),
-      projectIds: projectIds.split(',').map(s => s.trim()).filter(Boolean),
+      teamId,
+      teamName,
+      projectIds,
+      projectNames: selectedProjects.map(p => p.name),
     });
   };
 
   return (
     <div className="preset-form">
       <div className="preset-form-row">
-        <label>Name</label>
+        <label>Preset name</label>
         <input
           value={name}
           onChange={e => setName(e.target.value)}
-          placeholder="e.g. TFS"
+          placeholder="e.g. TFS, Mobile, All"
           autoFocus
         />
       </div>
+
       <div className="preset-form-row">
-        <label>Team ID</label>
-        <input
-          value={teamId}
-          onChange={e => setTeamId(e.target.value)}
-          placeholder="Linear team UUID (leave empty for demo data)"
-        />
+        <label>Team</label>
+        {!apiKey ? (
+          <p className="settings-hint" style={{ margin: 0 }}>Enter your API key above to browse teams.</p>
+        ) : loadingTeams ? (
+          <p className="settings-hint" style={{ margin: 0 }}>Loading teams…</p>
+        ) : fetchError ? (
+          <p style={{ color: 'var(--chart-red)', fontSize: '0.8rem', margin: 0 }}>{fetchError}</p>
+        ) : teams.length > 0 ? (
+          <select className="preset-form-select" value={teamId} onChange={handleTeamChange}>
+            <option value="">— Select a team —</option>
+            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        ) : (
+          <p className="settings-hint" style={{ margin: 0 }}>No teams found for this API key.</p>
+        )}
       </div>
-      <div className="preset-form-row">
-        <label>Project IDs</label>
-        <input
-          value={projectIds}
-          onChange={e => setProjectIds(e.target.value)}
-          placeholder="UUID1, UUID2, UUID3 (leave empty for all projects)"
-        />
-      </div>
+
+      {teamId && (
+        <div className="preset-form-row">
+          <label>
+            Projects
+            <span className="preset-form-label-note"> — leave all unchecked to include all projects</span>
+          </label>
+          {loadingProjects ? (
+            <p className="settings-hint" style={{ margin: 0 }}>Loading projects…</p>
+          ) : projects.length > 0 ? (
+            <div className="project-checklist">
+              {projects.map(p => (
+                <label key={p.id} className="project-check-item">
+                  <input
+                    type="checkbox"
+                    checked={projectIds.includes(p.id)}
+                    onChange={() => toggleProject(p.id)}
+                  />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p className="settings-hint" style={{ margin: 0 }}>No projects found for this team.</p>
+          )}
+        </div>
+      )}
+
       <div className="preset-form-actions">
         <button className="btn-secondary" onClick={onCancel} type="button">Cancel</button>
-        <button onClick={handleSave} type="button">Save Preset</button>
+        <button onClick={handleSave} type="button" disabled={!name.trim()}>Save Preset</button>
       </div>
     </div>
   );
@@ -73,12 +151,8 @@ export default function SettingsModal({ apiKey, presets, onSave, onClose }) {
     onClose();
   };
 
-  const handleOverlayClick = (e) => {
-    if (e.target === e.currentTarget) onClose();
-  };
-
   return (
-    <div className="modal-overlay" onClick={handleOverlayClick}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-card">
         <div className="modal-header">
           <h2>Settings</h2>
@@ -95,14 +169,14 @@ export default function SettingsModal({ apiKey, presets, onSave, onClose }) {
             placeholder="lin_api_xxxxxxxxxxxx"
           />
           <p className="settings-hint">
-            Stored in your browser only. Find it at Linear → Settings → API → Personal API keys.
+            Stored in your browser only. Get it from Linear → Settings → API → Personal API keys.
           </p>
         </div>
 
         <div className="settings-section">
           <label className="settings-label">Presets</label>
           <p className="settings-hint" style={{ marginBottom: '0.75rem' }}>
-            Each preset defines a team + project combination. Team ID and Project IDs are UUIDs from Linear URLs.
+            Each preset is a saved view — a team and optional project selection.
           </p>
 
           <div className="preset-list">
@@ -111,6 +185,7 @@ export default function SettingsModal({ apiKey, presets, onSave, onClose }) {
                 {editingId === p.id ? (
                   <PresetForm
                     preset={p}
+                    apiKey={localApiKey}
                     onSave={handleSavePreset}
                     onCancel={() => setEditingId(null)}
                   />
@@ -119,10 +194,12 @@ export default function SettingsModal({ apiKey, presets, onSave, onClose }) {
                     <div className="preset-item-info">
                       <span className="preset-item-name">{p.name}</span>
                       <span className="preset-item-detail">
-                        {p.teamId
-                          ? `Team: …${p.teamId.slice(-8)}`
-                          : 'No team — loads demo data'}
-                        {p.projectIds?.length > 0 && ` · ${p.projectIds.length} project${p.projectIds.length > 1 ? 's' : ''}`}
+                        {p.teamName || (p.teamId ? `Team ID: …${p.teamId.slice(-8)}` : 'No team — loads demo data')}
+                        {p.projectNames?.length > 0
+                          ? ` · ${p.projectNames.join(', ')}`
+                          : p.projectIds?.length > 0
+                            ? ` · ${p.projectIds.length} project(s)`
+                            : p.teamId ? ' · All projects' : ''}
                       </span>
                     </div>
                     <div className="preset-item-actions">
@@ -136,7 +213,11 @@ export default function SettingsModal({ apiKey, presets, onSave, onClose }) {
           </div>
 
           {adding ? (
-            <PresetForm onSave={handleSavePreset} onCancel={() => setAdding(false)} />
+            <PresetForm
+              apiKey={localApiKey}
+              onSave={handleSavePreset}
+              onCancel={() => setAdding(false)}
+            />
           ) : (
             <button
               className="btn-secondary"

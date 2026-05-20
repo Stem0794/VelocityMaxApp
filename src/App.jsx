@@ -13,6 +13,17 @@ const DEFAULT_PRESETS = [
   { id: 'demo', name: 'Demo Data', teamId: '', projectIds: [] },
 ];
 
+// SHA-256 hash the entered password and compare to the stored hash.
+// The plaintext password is never stored anywhere — only the hash is
+// embedded in the bundle via the VITE_APP_PASSWORD_HASH build secret.
+async function verifyPassword(input) {
+  const stored = import.meta.env.VITE_APP_PASSWORD_HASH;
+  if (!stored) return null; // not configured
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return hex === stored.toLowerCase();
+}
+
 function loadFromStorage(key, fallback) {
   try {
     const s = localStorage.getItem(key);
@@ -36,6 +47,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authChecking, setAuthChecking] = useState(false);
 
   // ─── Settings ───
   const [showSettings, setShowSettings] = useState(false);
@@ -66,12 +78,28 @@ export default function App() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (password === 'velocity') {
+    setAuthChecking(true);
+    setAuthError('');
+    // Artificial delay — slows down any brute-force attempt
+    await new Promise(r => setTimeout(r, 600));
+    const result = await verifyPassword(password);
+    if (result === null) {
+      // Not configured — allow through in dev, block in prod
+      if (import.meta.env.DEV) {
+        setIsAuthenticated(true);
+      } else {
+        setAuthError('No password configured. Set VITE_APP_PASSWORD_HASH in GitHub Secrets.');
+        setAuthChecking(false);
+      }
+      return;
+    }
+    if (result) {
       setIsAuthenticated(true);
     } else {
-      setAuthError('Incorrect password');
+      setAuthError('Incorrect password.');
+      setAuthChecking(false);
     }
   };
 
@@ -104,7 +132,7 @@ export default function App() {
 
     try {
       const [teamName, rawIssues] = await Promise.all([
-        fetchTeamName(key, preset.teamId),
+        preset.teamName ? Promise.resolve(preset.teamName) : fetchTeamName(key, preset.teamId),
         fetchIssues(key, preset.teamId, preset.projectIds),
       ]);
       if (fetchSeq.current !== seq) return;
@@ -296,19 +324,36 @@ export default function App() {
     return (
       <div className="login-screen">
         <div className="glass-card login-card">
-          <h2>VelocityMAX</h2>
+          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>VelocityMAX</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+            Enter your password to access the dashboard
+          </p>
           <form onSubmit={handleLogin}>
             <div className="input-group">
               <input
                 type="password"
-                placeholder="Enter password"
+                placeholder="Password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                autoComplete="current-password"
+                autoFocus
+                disabled={authChecking}
               />
             </div>
-            {authError && <p style={{ color: 'var(--chart-red)', marginBottom: '1rem' }}>{authError}</p>}
-            <button type="submit">Access Dashboard</button>
+            {authError && (
+              <p style={{ color: 'var(--chart-red)', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                {authError}
+              </p>
+            )}
+            <button type="submit" disabled={authChecking}>
+              {authChecking ? 'Checking…' : 'Sign In'}
+            </button>
           </form>
+          {import.meta.env.DEV && (
+            <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              Dev mode — auth bypassed. Set VITE_APP_PASSWORD_HASH in .env.local to test.
+            </p>
+          )}
         </div>
       </div>
     );
