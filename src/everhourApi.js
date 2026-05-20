@@ -29,25 +29,55 @@ export async function fetchEverhourProjects(apiKey) {
   return all.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 }
 
-// Returns budget summary for the given project IDs (or all if none given).
-// Everhour time values are in seconds.
+// Returns budget summary for the given project IDs.
+// Fetches each project individually to get complete budget data.
 export async function fetchEverhourBudgets(apiKey, projectIds = []) {
-  const all = await fetchEverhourProjects(apiKey);
-  const filtered = projectIds.length > 0
-    ? all.filter(p => projectIds.includes(String(p.id)))
-    : all;
+  const projects = await Promise.all(
+    projectIds.map(id =>
+      everhourGet(apiKey, `/projects/${encodeURIComponent(id)}`).catch(() => null)
+    )
+  );
 
-  return filtered.map(p => {
-    const budgetSec = p.budget?.value ?? null;
-    const consumedSec = p.budget?.progress ?? null;
-    const percent = budgetSec ? Math.round((consumedSec / budgetSec) * 100) : null;
+  return projects.filter(Boolean).map(p => {
+    const b = p.budget;
+
+    // Log raw budget data once per project to help diagnose field names
+    console.debug('[Everhour]', p.name, { budget: b, time: p.time });
+
+    const isFinancial = b?.type === 'financial' || b?.type === 'money';
+
+    // Try common field names for budget total and consumed
+    const rawTotal = b?.value ?? b?.amount ?? b?.total ?? null;
+    // For consumed: progress field, or fall back to project-level time (seconds)
+    const rawConsumed = b?.progress ?? b?.spent ?? b?.consumed ?? p.time ?? null;
+
+    let budgetDisplay, consumedDisplay, percentUsed;
+
+    if (isFinancial) {
+      // Financial budget — values are in the team's currency (€)
+      budgetDisplay = rawTotal != null ? formatEuros(rawTotal) : null;
+      consumedDisplay = rawConsumed != null ? formatEuros(rawConsumed) : null;
+      percentUsed = rawTotal ? Math.round((rawConsumed / rawTotal) * 100) : null;
+    } else {
+      // Time budget — values in seconds, display as hours
+      const budgetH = rawTotal != null ? Math.round(rawTotal / 3600 * 10) / 10 : null;
+      const consumedH = rawConsumed != null ? Math.round(rawConsumed / 3600 * 10) / 10 : null;
+      budgetDisplay = budgetH != null ? `${budgetH}h` : null;
+      consumedDisplay = consumedH != null ? `${consumedH}h` : null;
+      percentUsed = budgetH ? Math.round((consumedH / budgetH) * 100) : null;
+    }
+
     return {
       id: String(p.id),
       name: p.name || 'Unnamed',
-      budgetType: p.budget?.type || 'time',
-      budgetHours: budgetSec != null ? Math.round(budgetSec / 3600 * 10) / 10 : null,
-      consumedHours: consumedSec != null ? Math.round(consumedSec / 3600 * 10) / 10 : null,
-      percentUsed: percent,
+      isFinancial,
+      budgetDisplay,
+      consumedDisplay,
+      percentUsed,
     };
   });
+}
+
+function formatEuros(amount) {
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(amount);
 }

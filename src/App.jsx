@@ -639,8 +639,8 @@ export default function App() {
                 return (
                   <tr key={p.id}>
                     <td>{p.name}</td>
-                    <td>{p.consumedHours != null ? `${p.consumedHours}h` : '—'}</td>
-                    <td>{p.budgetHours != null ? `${p.budgetHours}h` : '—'}</td>
+                    <td>{p.consumedDisplay ?? '—'}</td>
+                    <td>{p.budgetDisplay ?? '—'}</td>
                     <td>
                       {p.percentUsed != null ? (
                         <div className="budget-progress-cell">
