@@ -7,6 +7,7 @@ import {
   fetchTeamName, fetchIssues, fetchWorkflowStates, fetchStatusHistories,
   processIssues, computeBurnupData,
 } from './linearApi';
+import { fetchEverhourBudgets } from './everhourApi';
 import SettingsModal from './SettingsModal';
 
 const DEFAULT_PRESETS = [];
@@ -31,6 +32,56 @@ function loadFromStorage(key, fallback) {
   }
 }
 
+function MultiSelectDropdown({ options, selected, onChange, placeholder = 'All' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const allSelected = selected.length === 0;
+  const label = allSelected ? placeholder : `${selected.length} of ${options.length} selected`;
+
+  const toggleOption = (opt) =>
+    onChange(selected.includes(opt) ? selected.filter(s => s !== opt) : [...selected, opt]);
+
+  return (
+    <div className="multiselect" ref={ref}>
+      <button
+        type="button"
+        className={`multiselect-btn${!allSelected ? ' has-selection' : ''}`}
+        onClick={() => setOpen(o => !o)}
+      >
+        {label}
+      </button>
+      {open && (
+        <div className="multiselect-dropdown">
+          <label className="multiselect-option">
+            <input type="checkbox" checked={allSelected} onChange={() => onChange([])} />
+            All Statuses
+          </label>
+          <hr className="multiselect-divider" />
+          {options.map(opt => (
+            <label key={opt} className="multiselect-option">
+              <input
+                type="checkbox"
+                checked={selected.includes(opt)}
+                onChange={() => toggleOption(opt)}
+              />
+              {opt}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getISOWeekLabel(dateStr) {
   const d = new Date(dateStr);
   d.setHours(0, 0, 0, 0);
@@ -52,6 +103,7 @@ export default function App() {
   // ─── Settings ───
   const [showSettings, setShowSettings] = useState(false);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('vmApiKey') || '');
+  const [everhourApiKey, setEverhourApiKey] = useState(() => localStorage.getItem('vmEverhourKey') || '');
   const [presets, setPresets] = useState(() => loadFromStorage('vmPresets', DEFAULT_PRESETS));
   const [activePresetId, setActivePresetId] = useState(
     () => localStorage.getItem('vmActivePreset') || 'demo'
@@ -64,6 +116,7 @@ export default function App() {
 
   // ─── Data ───
   const [data, setData] = useState(null);
+  const [budgetData, setBudgetData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyProgress, setHistoryProgress] = useState({ done: 0, total: 0 });
@@ -73,11 +126,14 @@ export default function App() {
   // ─── Filters ───
   const [selectedProject, setSelectedProject] = useState('All');
   const [selectedAssignee, setSelectedAssignee] = useState('All');
-  // Empty array = all statuses shown; non-empty = only those statuses
-  const [selectedCurrentStatuses, setSelectedCurrentStatuses] = useState([]);
+  // Empty array = all statuses shown; non-empty = only those statuses shown
+  const [selectedCurrentStatuses, setSelectedCurrentStatuses] = useState(() => {
+    try { const s = sessionStorage.getItem('vmStatusFilter'); return s ? JSON.parse(s) : []; }
+    catch { return []; }
+  });
   const [selectedStatuses, setSelectedStatuses] = useState([]);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(() => sessionStorage.getItem('vmDateFrom') || '');
+  const [dateTo, setDateTo] = useState(() => sessionStorage.getItem('vmDateTo') || '');
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -112,8 +168,16 @@ export default function App() {
     setLoadingHistory(false);
     setError('');
     setData(null);
+    setBudgetData(null);
     setSelectedProject('All');
     setSelectedAssignee('All');
+
+    // Everhour budget — fire independently so it doesn't block Linear data
+    if (everhourApiKey && preset.everhourProjectIds?.length > 0) {
+      fetchEverhourBudgets(everhourApiKey, preset.everhourProjectIds)
+        .then(rows => { if (fetchSeq.current === seq) setBudgetData(rows); })
+        .catch(() => {});
+    }
 
     if (!preset.teamId || !key) {
       try {
@@ -172,6 +236,15 @@ export default function App() {
     if (isAuthenticated) loadPresetData(activePreset, apiKey);
   }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    sessionStorage.setItem('vmStatusFilter', JSON.stringify(selectedCurrentStatuses));
+  }, [selectedCurrentStatuses]);
+
+  useEffect(() => {
+    sessionStorage.setItem('vmDateFrom', dateFrom);
+    sessionStorage.setItem('vmDateTo', dateTo);
+  }, [dateFrom, dateTo]);
+
   const selectPreset = (presetId) => {
     setActivePresetId(presetId);
     localStorage.setItem('vmActivePreset', presetId);
@@ -179,10 +252,12 @@ export default function App() {
     loadPresetData(p, apiKey);
   };
 
-  const handleSaveSettings = ({ apiKey: newKey, presets: newPresets }) => {
+  const handleSaveSettings = ({ apiKey: newKey, everhourApiKey: newEverhourKey, presets: newPresets }) => {
     const keyChanged = newKey !== apiKey;
     setApiKey(newKey);
     localStorage.setItem('vmApiKey', newKey);
+    setEverhourApiKey(newEverhourKey);
+    localStorage.setItem('vmEverhourKey', newEverhourKey);
     setPresets(newPresets);
     localStorage.setItem('vmPresets', JSON.stringify(newPresets));
 
@@ -315,12 +390,6 @@ export default function App() {
     );
   };
 
-  const toggleCurrentStatus = (status) => {
-    setSelectedCurrentStatuses(prev =>
-      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
-    );
-  };
-
   const resetFilters = () => {
     setSelectedProject('All');
     setSelectedAssignee('All');
@@ -400,6 +469,7 @@ export default function App() {
           {showSettings && (
             <SettingsModal
               apiKey={apiKey}
+              everhourApiKey={everhourApiKey}
               presets={presets}
               onSave={handleSaveSettings}
               onClose={() => setShowSettings(false)}
@@ -439,6 +509,7 @@ export default function App() {
       {showSettings && (
         <SettingsModal
           apiKey={apiKey}
+          everhourApiKey={everhourApiKey}
           presets={presets}
           onSave={handleSaveSettings}
           onClose={() => setShowSettings(false)}
@@ -498,31 +569,6 @@ export default function App() {
 
       {/* ─── Filter Bar ─── */}
       <div className="glass-card filter-bar">
-        {uniqueCurrentStatuses.length > 0 && (
-          <div className="filter-status-row">
-            <span className="filter-status-label">Status</span>
-            <div className="status-toggle-bar" style={{ marginBottom: 0 }}>
-              {uniqueCurrentStatuses.map(s => (
-                <button
-                  key={s}
-                  className={`status-chip${selectedCurrentStatuses.includes(s) ? ' active' : ''}`}
-                  onClick={() => toggleCurrentStatus(s)}
-                >
-                  {s}
-                </button>
-              ))}
-              {selectedCurrentStatuses.length > 0 && (
-                <button
-                  className="status-chip"
-                  style={{ borderStyle: 'dashed' }}
-                  onClick={() => setSelectedCurrentStatuses([])}
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        )}
         <div className="filter-bar-inner">
           <div className="filter-group">
             <label htmlFor="filter-project">Project</label>
@@ -538,6 +584,17 @@ export default function App() {
               {uniqueAssignees.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
+          {uniqueCurrentStatuses.length > 0 && (
+            <div className="filter-group">
+              <label>Status</label>
+              <MultiSelectDropdown
+                options={uniqueCurrentStatuses}
+                selected={selectedCurrentStatuses}
+                onChange={setSelectedCurrentStatuses}
+                placeholder="All Statuses"
+              />
+            </div>
+          )}
           <div className="filter-group">
             <label htmlFor="filter-from">From</label>
             <input id="filter-from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
@@ -560,6 +617,50 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* ─── Budget Overview ─── */}
+      {budgetData?.length > 0 && (
+        <div className="glass-card budget-card">
+          <div className="chart-title">Budget Overview</div>
+          <div className="chart-description">Everhour budget consumption per project.</div>
+          <table className="budget-table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Consumed</th>
+                <th>Budget</th>
+                <th style={{ minWidth: 200 }}>% Used</th>
+              </tr>
+            </thead>
+            <tbody>
+              {budgetData.map(p => {
+                const pct = p.percentUsed ?? 0;
+                const barColor = pct > 90 ? 'var(--chart-red)' : pct > 75 ? '#f59e0b' : 'var(--chart-green)';
+                return (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td>{p.consumedHours != null ? `${p.consumedHours}h` : '—'}</td>
+                    <td>{p.budgetHours != null ? `${p.budgetHours}h` : '—'}</td>
+                    <td>
+                      {p.percentUsed != null ? (
+                        <div className="budget-progress-cell">
+                          <div className="budget-bar">
+                            <div
+                              className="budget-bar-fill"
+                              style={{ width: `${Math.min(100, pct)}%`, background: barColor }}
+                            />
+                          </div>
+                          <span className="budget-pct" style={{ color: barColor }}>{pct}%</span>
+                        </div>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* ─── KPI Cards ─── */}
       <div className="kpi-grid">
