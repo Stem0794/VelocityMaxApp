@@ -284,7 +284,7 @@ export default function App() {
 
   const burnupData = useMemo(() => {
     if (!data?.burnupData) return [];
-    if (selectedProject !== 'All' || selectedAssignee !== 'All' || selectedCurrentStatus !== 'All' || dateFrom || dateTo) {
+    if (selectedProject !== 'All' || selectedAssignee !== 'All' || selectedCurrentStatuses.length > 0 || dateFrom || dateTo) {
       const sorted = [...filteredIssues].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
       if (!sorted.length) return [];
       const dailyMap = {};
