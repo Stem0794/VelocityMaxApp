@@ -29,6 +29,7 @@ jobs:
         run: npm ci
 
       - name: Fetch Linear Data
+        continue-on-error: true
         env:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
