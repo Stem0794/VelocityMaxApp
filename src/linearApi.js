@@ -46,6 +46,19 @@ export async function fetchProjects(apiKey, teamId) {
   return (data.team?.projects?.nodes || []).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export async function fetchWorkflowStates(apiKey, teamId) {
+  const data = await gql(apiKey, `
+    query($teamId: String!) {
+      team(id: $teamId) {
+        states { nodes { id name type } }
+      }
+    }
+  `, { teamId });
+  return (data.team?.states?.nodes || [])
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(s => s.name);
+}
+
 export async function fetchIssues(apiKey, teamId, projectIds = []) {
   const issues = [];
   let cursor = null;

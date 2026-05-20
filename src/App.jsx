@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
 import {
-  fetchTeamName, fetchIssues, fetchStatusHistories,
+  fetchTeamName, fetchIssues, fetchWorkflowStates, fetchStatusHistories,
   processIssues, computeBurnupData,
 } from './linearApi';
 import SettingsModal from './SettingsModal';
@@ -130,9 +130,10 @@ export default function App() {
     }
 
     try {
-      const [teamName, rawIssues] = await Promise.all([
+      const [teamName, rawIssues, workflowStates] = await Promise.all([
         preset.teamName ? Promise.resolve(preset.teamName) : fetchTeamName(key, preset.teamId),
         fetchIssues(key, preset.teamId, preset.projectIds),
+        fetchWorkflowStates(key, preset.teamId),
       ]);
       if (fetchSeq.current !== seq) return;
 
@@ -140,6 +141,7 @@ export default function App() {
       setData({
         issues: processed,
         burnupData: computeBurnupData(processed),
+        workflowStates,
         lastUpdated: new Date().toISOString(),
         team: teamName,
       });
@@ -205,12 +207,16 @@ export default function App() {
     return [...new Set(data.issues.map(i => i.assignee).filter(Boolean))].sort();
   }, [data]);
 
+  // Prefer the authoritative list fetched from Linear so deleted states
+  // don't appear. Falls back to deriving from issue data (e.g. demo data.json).
   const uniqueCurrentStatuses = useMemo(() => {
+    if (data?.workflowStates?.length) return data.workflowStates;
     if (!data?.issues) return [];
     return [...new Set(data.issues.map(i => i.currentStatus).filter(Boolean))].sort();
   }, [data]);
 
   const allStatuses = useMemo(() => {
+    if (data?.workflowStates?.length) return data.workflowStates;
     if (!data?.issues) return [];
     const set = new Set();
     data.issues.forEach(i => Object.keys(i.timeByStatus || {}).forEach(s => set.add(s)));
