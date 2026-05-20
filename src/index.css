@@ -719,6 +719,66 @@ button:active {
   transform: none;
 }
 
+/* ─── Budget Overview ─── */
+.budget-card {
+  margin-bottom: 2rem;
+}
+
+.budget-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+}
+
+.budget-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 1rem 0.75rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.budget-table td {
+  padding: 0.8rem 1rem 0.8rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  vertical-align: middle;
+}
+
+.budget-table tr:last-child td {
+  border-bottom: none;
+}
+
+.budget-progress-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.budget-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.budget-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s ease;
+}
+
+.budget-pct {
+  font-weight: 600;
+  font-size: 0.85rem;
+  min-width: 3.5rem;
+  text-align: right;
+}
+
 /* ─── Multi-select Dropdown ─── */
 .multiselect {
   position: relative;

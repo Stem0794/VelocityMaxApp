@@ -7,6 +7,7 @@ import {
   fetchTeamName, fetchIssues, fetchWorkflowStates, fetchStatusHistories,
   processIssues, computeBurnupData,
 } from './linearApi';
+import { fetchEverhourBudgets } from './everhourApi';
 import SettingsModal from './SettingsModal';
 
 const DEFAULT_PRESETS = [];
@@ -102,6 +103,7 @@ export default function App() {
   // ─── Settings ───
   const [showSettings, setShowSettings] = useState(false);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('vmApiKey') || '');
+  const [everhourApiKey, setEverhourApiKey] = useState(() => localStorage.getItem('vmEverhourKey') || '');
   const [presets, setPresets] = useState(() => loadFromStorage('vmPresets', DEFAULT_PRESETS));
   const [activePresetId, setActivePresetId] = useState(
     () => localStorage.getItem('vmActivePreset') || 'demo'
@@ -114,6 +116,7 @@ export default function App() {
 
   // ─── Data ───
   const [data, setData] = useState(null);
+  const [budgetData, setBudgetData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyProgress, setHistoryProgress] = useState({ done: 0, total: 0 });
@@ -165,8 +168,16 @@ export default function App() {
     setLoadingHistory(false);
     setError('');
     setData(null);
+    setBudgetData(null);
     setSelectedProject('All');
     setSelectedAssignee('All');
+
+    // Everhour budget — fire independently so it doesn't block Linear data
+    if (everhourApiKey && preset.everhourProjectIds?.length > 0) {
+      fetchEverhourBudgets(everhourApiKey, preset.everhourProjectIds)
+        .then(rows => { if (fetchSeq.current === seq) setBudgetData(rows); })
+        .catch(() => {});
+    }
 
     if (!preset.teamId || !key) {
       try {
@@ -241,10 +252,12 @@ export default function App() {
     loadPresetData(p, apiKey);
   };
 
-  const handleSaveSettings = ({ apiKey: newKey, presets: newPresets }) => {
+  const handleSaveSettings = ({ apiKey: newKey, everhourApiKey: newEverhourKey, presets: newPresets }) => {
     const keyChanged = newKey !== apiKey;
     setApiKey(newKey);
     localStorage.setItem('vmApiKey', newKey);
+    setEverhourApiKey(newEverhourKey);
+    localStorage.setItem('vmEverhourKey', newEverhourKey);
     setPresets(newPresets);
     localStorage.setItem('vmPresets', JSON.stringify(newPresets));
 
@@ -456,6 +469,7 @@ export default function App() {
           {showSettings && (
             <SettingsModal
               apiKey={apiKey}
+              everhourApiKey={everhourApiKey}
               presets={presets}
               onSave={handleSaveSettings}
               onClose={() => setShowSettings(false)}
@@ -495,6 +509,7 @@ export default function App() {
       {showSettings && (
         <SettingsModal
           apiKey={apiKey}
+          everhourApiKey={everhourApiKey}
           presets={presets}
           onSave={handleSaveSettings}
           onClose={() => setShowSettings(false)}
@@ -602,6 +617,50 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* ─── Budget Overview ─── */}
+      {budgetData?.length > 0 && (
+        <div className="glass-card budget-card">
+          <div className="chart-title">Budget Overview</div>
+          <div className="chart-description">Everhour budget consumption per project.</div>
+          <table className="budget-table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Consumed</th>
+                <th>Budget</th>
+                <th style={{ minWidth: 200 }}>% Used</th>
+              </tr>
+            </thead>
+            <tbody>
+              {budgetData.map(p => {
+                const pct = p.percentUsed ?? 0;
+                const barColor = pct > 90 ? 'var(--chart-red)' : pct > 75 ? '#f59e0b' : 'var(--chart-green)';
+                return (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td>{p.consumedHours != null ? `${p.consumedHours}h` : '—'}</td>
+                    <td>{p.budgetHours != null ? `${p.budgetHours}h` : '—'}</td>
+                    <td>
+                      {p.percentUsed != null ? (
+                        <div className="budget-progress-cell">
+                          <div className="budget-bar">
+                            <div
+                              className="budget-bar-fill"
+                              style={{ width: `${Math.min(100, pct)}%`, background: barColor }}
+                            />
+                          </div>
+                          <span className="budget-pct" style={{ color: barColor }}>{pct}%</span>
+                        </div>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* ─── KPI Cards ─── */}
       <div className="kpi-grid">
