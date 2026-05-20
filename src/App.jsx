@@ -4,14 +4,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
 import {
-  fetchTeamName, fetchIssues, fetchStatusHistories,
+  fetchTeamName, fetchIssues, fetchWorkflowStates, fetchStatusHistories,
   processIssues, computeBurnupData,
 } from './linearApi';
 import SettingsModal from './SettingsModal';
 
-const DEFAULT_PRESETS = [
-  { id: 'demo', name: 'Demo Data', teamId: '', projectIds: [] },
-];
+const DEFAULT_PRESETS = [];
 
 // SHA-256 hash the entered password and compare to the stored hash.
 // The plaintext password is never stored anywhere — only the hash is
@@ -73,7 +71,8 @@ export default function App() {
   // ─── Filters ───
   const [selectedProject, setSelectedProject] = useState('All');
   const [selectedAssignee, setSelectedAssignee] = useState('All');
-  const [selectedCurrentStatus, setSelectedCurrentStatus] = useState('All');
+  // Empty array = all statuses shown; non-empty = only those statuses
+  const [selectedCurrentStatuses, setSelectedCurrentStatuses] = useState([]);
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -111,7 +110,7 @@ export default function App() {
     setData(null);
     setSelectedProject('All');
     setSelectedAssignee('All');
-    setSelectedCurrentStatus('All');
+    setSelectedCurrentStatuses([]);
     setDateFrom('');
     setDateTo('');
 
@@ -131,9 +130,10 @@ export default function App() {
     }
 
     try {
-      const [teamName, rawIssues] = await Promise.all([
+      const [teamName, rawIssues, workflowStates] = await Promise.all([
         preset.teamName ? Promise.resolve(preset.teamName) : fetchTeamName(key, preset.teamId),
         fetchIssues(key, preset.teamId, preset.projectIds),
+        fetchWorkflowStates(key, preset.teamId),
       ]);
       if (fetchSeq.current !== seq) return;
 
@@ -141,6 +141,7 @@ export default function App() {
       setData({
         issues: processed,
         burnupData: computeBurnupData(processed),
+        workflowStates,
         lastUpdated: new Date().toISOString(),
         team: teamName,
       });
@@ -184,14 +185,13 @@ export default function App() {
     setPresets(newPresets);
     localStorage.setItem('vmPresets', JSON.stringify(newPresets));
 
-    // Keep active preset valid after preset list may have changed
     const stillExists = newPresets.find(p => p.id === activePresetId);
-    const targetId = stillExists ? activePresetId : (newPresets[0]?.id || 'demo');
+    const targetPreset = stillExists || newPresets[0] || null;
+    const targetId = targetPreset?.id ?? null;
     setActivePresetId(targetId);
-    localStorage.setItem('vmActivePreset', targetId);
+    if (targetId) localStorage.setItem('vmActivePreset', targetId);
 
-    const targetPreset = newPresets.find(p => p.id === targetId) || newPresets[0];
-    if (keyChanged || !stillExists) {
+    if (targetPreset && (keyChanged || !stillExists)) {
       loadPresetData(targetPreset, newKey);
     }
   };
@@ -207,12 +207,16 @@ export default function App() {
     return [...new Set(data.issues.map(i => i.assignee).filter(Boolean))].sort();
   }, [data]);
 
+  // Prefer the authoritative list fetched from Linear so deleted states
+  // don't appear. Falls back to deriving from issue data (e.g. demo data.json).
   const uniqueCurrentStatuses = useMemo(() => {
+    if (data?.workflowStates?.length) return data.workflowStates;
     if (!data?.issues) return [];
     return [...new Set(data.issues.map(i => i.currentStatus).filter(Boolean))].sort();
   }, [data]);
 
   const allStatuses = useMemo(() => {
+    if (data?.workflowStates?.length) return data.workflowStates;
     if (!data?.issues) return [];
     const set = new Set();
     data.issues.forEach(i => Object.keys(i.timeByStatus || {}).forEach(s => set.add(s)));
@@ -231,12 +235,12 @@ export default function App() {
     return data.issues.filter(issue => {
       if (selectedProject !== 'All' && issue.project !== selectedProject) return false;
       if (selectedAssignee !== 'All' && issue.assignee !== selectedAssignee) return false;
-      if (selectedCurrentStatus !== 'All' && issue.currentStatus !== selectedCurrentStatus) return false;
+      if (selectedCurrentStatuses.length > 0 && !selectedCurrentStatuses.includes(issue.currentStatus)) return false;
       if (dateFrom && new Date(issue.createdAt) < new Date(dateFrom)) return false;
       if (dateTo && new Date(issue.createdAt) > new Date(dateTo + 'T23:59:59Z')) return false;
       return true;
     });
-  }, [data, selectedProject, selectedAssignee, selectedCurrentStatus, dateFrom, dateTo]);
+  }, [data, selectedProject, selectedAssignee, selectedCurrentStatuses, dateFrom, dateTo]);
 
   // ─── Chart data ───
   const velocityData = useMemo(() => {
@@ -302,7 +306,7 @@ export default function App() {
       });
     }
     return data.burnupData;
-  }, [data, filteredIssues, selectedProject, selectedAssignee, selectedCurrentStatus, dateFrom, dateTo]);
+  }, [data, filteredIssues, selectedProject, selectedAssignee, selectedCurrentStatuses, dateFrom, dateTo]);
 
   const toggleStatus = (status) => {
     setSelectedStatuses(prev =>
@@ -310,10 +314,16 @@ export default function App() {
     );
   };
 
+  const toggleCurrentStatus = (status) => {
+    setSelectedCurrentStatuses(prev =>
+      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
+    );
+  };
+
   const resetFilters = () => {
     setSelectedProject('All');
     setSelectedAssignee('All');
-    setSelectedCurrentStatus('All');
+    setSelectedCurrentStatuses([]);
     setDateFrom('');
     setDateTo('');
     setSelectedStatuses([...allStatuses]);
@@ -463,9 +473,14 @@ export default function App() {
             onClick={() => setShowSettings(true)}
             title="Manage presets"
           >
-            + Preset
+            {presets.length === 0 ? '+ Add Preset' : '+ Preset'}
           </button>
         </div>
+        {presets.length === 0 && (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+            No presets yet — open ⚙ Settings to add your first one.
+          </p>
+        )}
 
         {data && (
           <p className="header-meta">
@@ -482,6 +497,31 @@ export default function App() {
 
       {/* ─── Filter Bar ─── */}
       <div className="glass-card filter-bar">
+        {uniqueCurrentStatuses.length > 0 && (
+          <div className="filter-status-row">
+            <span className="filter-status-label">Status</span>
+            <div className="status-toggle-bar" style={{ marginBottom: 0 }}>
+              {uniqueCurrentStatuses.map(s => (
+                <button
+                  key={s}
+                  className={`status-chip${selectedCurrentStatuses.includes(s) ? ' active' : ''}`}
+                  onClick={() => toggleCurrentStatus(s)}
+                >
+                  {s}
+                </button>
+              ))}
+              {selectedCurrentStatuses.length > 0 && (
+                <button
+                  className="status-chip"
+                  style={{ borderStyle: 'dashed' }}
+                  onClick={() => setSelectedCurrentStatuses([])}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         <div className="filter-bar-inner">
           <div className="filter-group">
             <label htmlFor="filter-project">Project</label>
@@ -495,13 +535,6 @@ export default function App() {
             <select id="filter-assignee" value={selectedAssignee} onChange={e => setSelectedAssignee(e.target.value)}>
               <option value="All">All Assignees</option>
               {uniqueAssignees.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-          <div className="filter-group">
-            <label htmlFor="filter-status">Status</label>
-            <select id="filter-status" value={selectedCurrentStatus} onChange={e => setSelectedCurrentStatus(e.target.value)}>
-              <option value="All">All Statuses</option>
-              {uniqueCurrentStatuses.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="filter-group">

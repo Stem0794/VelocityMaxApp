@@ -313,11 +313,25 @@ async function fetchTeamName(teamId) {
   return data.team?.name || teamId;
 }
 
+// --------------- Fetch workflow states ---------------
+async function fetchWorkflowStates(teamId) {
+  const query = `query($teamId: String!) {
+    team(id: $teamId) { states { nodes { id name type } } }
+  }`;
+  const data = await linearQuery(query, { teamId });
+  return (data.team?.states?.nodes || [])
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(s => s.name);
+}
+
 // --------------- Main ---------------
 async function main() {
   console.log('Fetching team info...');
-  const teamName = await fetchTeamName(TEAM_ID);
-  console.log(`Team: ${teamName}`);
+  const [teamName, workflowStates] = await Promise.all([
+    fetchTeamName(TEAM_ID),
+    fetchWorkflowStates(TEAM_ID),
+  ]);
+  console.log(`Team: ${teamName}, States: ${workflowStates.join(', ')}`);
 
   console.log('Fetching raw issues...');
   const issues = await fetchIssuesForProject(TEAM_ID, projectIds);
@@ -333,6 +347,7 @@ async function main() {
   const outputData = {
     issues: processed,
     burnupData: burnupData,
+    workflowStates: workflowStates,
     lastUpdated: new Date().toISOString(),
     team: teamName
   };
