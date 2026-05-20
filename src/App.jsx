@@ -31,6 +31,56 @@ function loadFromStorage(key, fallback) {
   }
 }
 
+function MultiSelectDropdown({ options, selected, onChange, placeholder = 'All' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const allSelected = selected.length === 0;
+  const label = allSelected ? placeholder : `${selected.length} of ${options.length} selected`;
+
+  const toggleOption = (opt) =>
+    onChange(selected.includes(opt) ? selected.filter(s => s !== opt) : [...selected, opt]);
+
+  return (
+    <div className="multiselect" ref={ref}>
+      <button
+        type="button"
+        className={`multiselect-btn${!allSelected ? ' has-selection' : ''}`}
+        onClick={() => setOpen(o => !o)}
+      >
+        {label}
+      </button>
+      {open && (
+        <div className="multiselect-dropdown">
+          <label className="multiselect-option">
+            <input type="checkbox" checked={allSelected} onChange={() => onChange([])} />
+            All Statuses
+          </label>
+          <hr className="multiselect-divider" />
+          {options.map(opt => (
+            <label key={opt} className="multiselect-option">
+              <input
+                type="checkbox"
+                checked={selected.includes(opt)}
+                onChange={() => toggleOption(opt)}
+              />
+              {opt}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getISOWeekLabel(dateStr) {
   const d = new Date(dateStr);
   d.setHours(0, 0, 0, 0);
@@ -73,11 +123,14 @@ export default function App() {
   // ─── Filters ───
   const [selectedProject, setSelectedProject] = useState('All');
   const [selectedAssignee, setSelectedAssignee] = useState('All');
-  // Empty array = all statuses shown; non-empty = only those statuses
-  const [selectedCurrentStatuses, setSelectedCurrentStatuses] = useState([]);
+  // Empty array = all statuses shown; non-empty = only those statuses shown
+  const [selectedCurrentStatuses, setSelectedCurrentStatuses] = useState(() => {
+    try { const s = sessionStorage.getItem('vmStatusFilter'); return s ? JSON.parse(s) : []; }
+    catch { return []; }
+  });
   const [selectedStatuses, setSelectedStatuses] = useState([]);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(() => sessionStorage.getItem('vmDateFrom') || '');
+  const [dateTo, setDateTo] = useState(() => sessionStorage.getItem('vmDateTo') || '');
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -171,6 +224,15 @@ export default function App() {
   useEffect(() => {
     if (isAuthenticated) loadPresetData(activePreset, apiKey);
   }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    sessionStorage.setItem('vmStatusFilter', JSON.stringify(selectedCurrentStatuses));
+  }, [selectedCurrentStatuses]);
+
+  useEffect(() => {
+    sessionStorage.setItem('vmDateFrom', dateFrom);
+    sessionStorage.setItem('vmDateTo', dateTo);
+  }, [dateFrom, dateTo]);
 
   const selectPreset = (presetId) => {
     setActivePresetId(presetId);
@@ -311,12 +373,6 @@ export default function App() {
 
   const toggleStatus = (status) => {
     setSelectedStatuses(prev =>
-      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
-    );
-  };
-
-  const toggleCurrentStatus = (status) => {
-    setSelectedCurrentStatuses(prev =>
       prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
     );
   };
@@ -498,31 +554,6 @@ export default function App() {
 
       {/* ─── Filter Bar ─── */}
       <div className="glass-card filter-bar">
-        {uniqueCurrentStatuses.length > 0 && (
-          <div className="filter-status-row">
-            <span className="filter-status-label">Status</span>
-            <div className="status-toggle-bar" style={{ marginBottom: 0 }}>
-              {uniqueCurrentStatuses.map(s => (
-                <button
-                  key={s}
-                  className={`status-chip${selectedCurrentStatuses.includes(s) ? ' active' : ''}`}
-                  onClick={() => toggleCurrentStatus(s)}
-                >
-                  {s}
-                </button>
-              ))}
-              {selectedCurrentStatuses.length > 0 && (
-                <button
-                  className="status-chip"
-                  style={{ borderStyle: 'dashed' }}
-                  onClick={() => setSelectedCurrentStatuses([])}
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        )}
         <div className="filter-bar-inner">
           <div className="filter-group">
             <label htmlFor="filter-project">Project</label>
@@ -538,6 +569,17 @@ export default function App() {
               {uniqueAssignees.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
+          {uniqueCurrentStatuses.length > 0 && (
+            <div className="filter-group">
+              <label>Status</label>
+              <MultiSelectDropdown
+                options={uniqueCurrentStatuses}
+                selected={selectedCurrentStatuses}
+                onChange={setSelectedCurrentStatuses}
+                placeholder="All Statuses"
+              />
+            </div>
+          )}
           <div className="filter-group">
             <label htmlFor="filter-from">From</label>
             <input id="filter-from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
