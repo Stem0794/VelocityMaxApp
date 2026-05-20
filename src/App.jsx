@@ -23,6 +23,7 @@ export default function App() {
   // ─── Filters ───
   const [selectedProject, setSelectedProject] = useState('All');
   const [selectedAssignee, setSelectedAssignee] = useState('All');
+  const [selectedCurrentStatus, setSelectedCurrentStatus] = useState('All');
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -40,7 +41,7 @@ export default function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/data.json');
+      const res = await fetch(import.meta.env.BASE_URL + 'data.json');
       if (!res.ok) throw new Error('Data not available');
       const json = await res.json();
       setData(json);
@@ -63,6 +64,11 @@ export default function App() {
     return [...new Set(data.issues.map(i => i.assignee).filter(Boolean))].sort();
   }, [data]);
 
+  const uniqueCurrentStatuses = useMemo(() => {
+    if (!data?.issues) return [];
+    return [...new Set(data.issues.map(i => i.currentStatus).filter(Boolean))].sort();
+  }, [data]);
+
   const allStatuses = useMemo(() => {
     if (!data?.issues) return [];
     const set = new Set();
@@ -83,6 +89,7 @@ export default function App() {
     return data.issues.filter(issue => {
       if (selectedProject !== 'All' && issue.project !== selectedProject) return false;
       if (selectedAssignee !== 'All' && issue.assignee !== selectedAssignee) return false;
+      if (selectedCurrentStatus !== 'All' && issue.currentStatus !== selectedCurrentStatus) return false;
       if (dateFrom) {
         const created = new Date(issue.createdAt);
         if (created < new Date(dateFrom)) return false;
@@ -93,7 +100,7 @@ export default function App() {
       }
       return true;
     });
-  }, [data, selectedProject, selectedAssignee, dateFrom, dateTo]);
+  }, [data, selectedProject, selectedAssignee, selectedCurrentStatus, dateFrom, dateTo]);
 
   // ─── Chart data from filtered issues ───
   const velocityData = useMemo(() => {
@@ -268,6 +275,13 @@ export default function App() {
             </select>
           </div>
           <div className="filter-group">
+            <label htmlFor="filter-status">Status</label>
+            <select id="filter-status" value={selectedCurrentStatus} onChange={e => setSelectedCurrentStatus(e.target.value)}>
+              <option value="All">All Statuses</option>
+              {uniqueCurrentStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="filter-group">
             <label htmlFor="filter-from">From</label>
             <input id="filter-from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
           </div>
@@ -276,7 +290,7 @@ export default function App() {
             <input id="filter-to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
           </div>
           <div className="filter-group">
-            <button className="btn-secondary" onClick={() => { setSelectedProject('All'); setSelectedAssignee('All'); setDateFrom(''); setDateTo(''); setSelectedStatuses([...allStatuses]); }}>
+            <button className="btn-secondary" onClick={() => { setSelectedProject('All'); setSelectedAssignee('All'); setSelectedCurrentStatus('All'); setDateFrom(''); setDateTo(''); setSelectedStatuses([...allStatuses]); }}>
               Reset Filters
             </button>
           </div>

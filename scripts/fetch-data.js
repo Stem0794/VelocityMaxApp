@@ -306,8 +306,19 @@ function computeBurnupBurndownData(processedIssues) {
   return result;
 }
 
+// --------------- Fetch team name ---------------
+async function fetchTeamName(teamId) {
+  const query = `query($teamId: String!) { team(id: $teamId) { name } }`;
+  const data = await linearQuery(query, { teamId });
+  return data.team?.name || teamId;
+}
+
 // --------------- Main ---------------
 async function main() {
+  console.log('Fetching team info...');
+  const teamName = await fetchTeamName(TEAM_ID);
+  console.log(`Team: ${teamName}`);
+
   console.log('Fetching raw issues...');
   const issues = await fetchIssuesForProject(TEAM_ID, projectIds);
   console.log(`Found ${issues.length} issues.`);
@@ -323,7 +334,7 @@ async function main() {
     issues: processed,
     burnupData: burnupData,
     lastUpdated: new Date().toISOString(),
-    team: TEAM_ID
+    team: teamName
   };
 
   const outPath = path.resolve(__dirname, '../public/data.json');
