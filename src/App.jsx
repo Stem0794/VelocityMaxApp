@@ -43,7 +43,9 @@ function getISOWeekLabel(dateStr) {
 export default function App() {
   // ─── Auth ───
   const [password, setPassword] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    () => sessionStorage.getItem('vmAuthed') === '1'
+  );
   const [authError, setAuthError] = useState('');
   const [authChecking, setAuthChecking] = useState(false);
 
@@ -87,6 +89,7 @@ export default function App() {
     if (result === null) {
       // Not configured — allow through in dev, block in prod
       if (import.meta.env.DEV) {
+        sessionStorage.setItem('vmAuthed', '1');
         setIsAuthenticated(true);
       } else {
         setAuthError('No password configured. Set VITE_APP_PASSWORD_HASH in GitHub Secrets.');
@@ -95,6 +98,7 @@ export default function App() {
       return;
     }
     if (result) {
+      sessionStorage.setItem('vmAuthed', '1');
       setIsAuthenticated(true);
     } else {
       setAuthError('Incorrect password.');
