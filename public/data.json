@@ -1,0 +1,30 @@
+{
+  "issues": [
+    { "id": "ENG-1", "title": "Fix login bug", "points": 3, "priority": "Urgent", "assignee": "Alice", "project": "Core App", "labels": "bug", "currentStatus": "Done", "currentStatusType": "completed", "cycleNumber": 12, "createdAt": "2025-01-06T10:00:00Z", "startedAt": "2025-01-07T09:00:00Z", "completedAt": "2025-01-09T17:00:00Z", "canceledAt": "", "cycleTimeDays": 2.3, "leadTimeDays": 3.3, "timeByStatus": { "Todo": 1, "In Progress": 2.3 } },
+    { "id": "ENG-2", "title": "Add OAuth support", "points": 8, "priority": "High", "assignee": "Bob", "project": "Core App", "labels": "feature", "currentStatus": "Done", "currentStatusType": "completed", "cycleNumber": 12, "createdAt": "2025-01-06T11:00:00Z", "startedAt": "2025-01-08T09:00:00Z", "completedAt": "2025-01-15T17:00:00Z", "canceledAt": "", "cycleTimeDays": 7.3, "leadTimeDays": 9.3, "timeByStatus": { "Todo": 2, "In Progress": 5, "In Review": 2.3 } },
+    { "id": "ENG-3", "title": "Improve API rate limiting", "points": 5, "priority": "Medium", "assignee": "Alice", "project": "Core App", "labels": "backend", "currentStatus": "Done", "currentStatusType": "completed", "cycleNumber": 13, "createdAt": "2025-01-13T10:00:00Z", "startedAt": "2025-01-14T09:00:00Z", "completedAt": "2025-01-17T17:00:00Z", "canceledAt": "", "cycleTimeDays": 3.3, "leadTimeDays": 4.3, "timeByStatus": { "Todo": 1, "In Progress": 3.3 } },
+    { "id": "ENG-4", "title": "Dashboard charts", "points": 13, "priority": "High", "assignee": "Charlie", "project": "Analytics", "labels": "frontend", "currentStatus": "Done", "currentStatusType": "completed", "cycleNumber": 13, "createdAt": "2025-01-13T11:00:00Z", "startedAt": "2025-01-14T09:00:00Z", "completedAt": "2025-01-22T17:00:00Z", "canceledAt": "", "cycleTimeDays": 8.3, "leadTimeDays": 9.3, "timeByStatus": { "Todo": 1, "In Progress": 6, "In Review": 2.3 } },
+    { "id": "ENG-5", "title": "Refactor data layer", "points": 8, "priority": "Medium", "assignee": "Bob", "project": "Core App", "labels": "refactor", "currentStatus": "Done", "currentStatusType": "completed", "cycleNumber": 14, "createdAt": "2025-01-20T10:00:00Z", "startedAt": "2025-01-21T09:00:00Z", "completedAt": "2025-01-27T17:00:00Z", "canceledAt": "", "cycleTimeDays": 6.3, "leadTimeDays": 7.3, "timeByStatus": { "Todo": 1, "In Progress": 4, "In Review": 2.3 } },
+    { "id": "ENG-6", "title": "Notification system", "points": 5, "priority": "Low", "assignee": "Alice", "project": "Analytics", "labels": "feature", "currentStatus": "Done", "currentStatusType": "completed", "cycleNumber": 14, "createdAt": "2025-01-20T11:00:00Z", "startedAt": "2025-01-22T09:00:00Z", "completedAt": "2025-01-29T17:00:00Z", "canceledAt": "", "cycleTimeDays": 7.3, "leadTimeDays": 9.3, "timeByStatus": { "Todo": 2, "In Progress": 5.3, "In Review": 2 } },
+    { "id": "ENG-7", "title": "Mobile responsive layout", "points": 3, "priority": "High", "assignee": "Charlie", "project": "Core App", "labels": "frontend", "currentStatus": "Done", "currentStatusType": "completed", "cycleNumber": 15, "createdAt": "2025-01-27T10:00:00Z", "startedAt": "2025-01-28T09:00:00Z", "completedAt": "2025-01-30T17:00:00Z", "canceledAt": "", "cycleTimeDays": 2.3, "leadTimeDays": 3.3, "timeByStatus": { "Todo": 1, "In Progress": 2.3 } },
+    { "id": "ENG-8", "title": "Performance audit", "points": 5, "priority": "Medium", "assignee": "Bob", "project": "Analytics", "labels": "performance", "currentStatus": "Done", "currentStatusType": "completed", "cycleNumber": 15, "createdAt": "2025-01-27T11:00:00Z", "startedAt": "2025-01-28T09:00:00Z", "completedAt": "2025-02-03T17:00:00Z", "canceledAt": "", "cycleTimeDays": 6.3, "leadTimeDays": 7.3, "timeByStatus": { "Todo": 1, "In Progress": 4, "In Review": 2.3 } },
+    { "id": "ENG-9", "title": "E2E test coverage", "points": 8, "priority": "High", "assignee": "Alice", "project": "Core App", "labels": "testing", "currentStatus": "In Progress", "currentStatusType": "started", "cycleNumber": 16, "createdAt": "2025-02-03T10:00:00Z", "startedAt": "2025-02-04T09:00:00Z", "completedAt": "", "canceledAt": "", "cycleTimeDays": null, "leadTimeDays": null, "timeByStatus": { "Todo": 1, "In Progress": 3 } },
+    { "id": "ENG-10", "title": "CI/CD pipeline improvements", "points": 5, "priority": "Medium", "assignee": "Charlie", "project": "Core App", "labels": "devops", "currentStatus": "In Review", "currentStatusType": "started", "cycleNumber": 16, "createdAt": "2025-02-03T11:00:00Z", "startedAt": "2025-02-05T09:00:00Z", "completedAt": "", "canceledAt": "", "cycleTimeDays": null, "leadTimeDays": null, "timeByStatus": { "Todo": 2, "In Progress": 3, "In Review": 1 } }
+  ],
+  "burnupData": [
+    { "date": "2025-01-06T00:00:00Z", "cumulativeCreated": 11, "cumulativeCompleted": 0, "totalScope": 11 },
+    { "date": "2025-01-09T00:00:00Z", "cumulativeCreated": 11, "cumulativeCompleted": 3, "totalScope": 11 },
+    { "date": "2025-01-13T00:00:00Z", "cumulativeCreated": 24, "cumulativeCompleted": 3, "totalScope": 24 },
+    { "date": "2025-01-15T00:00:00Z", "cumulativeCreated": 24, "cumulativeCompleted": 11, "totalScope": 24 },
+    { "date": "2025-01-17T00:00:00Z", "cumulativeCreated": 24, "cumulativeCompleted": 16, "totalScope": 24 },
+    { "date": "2025-01-20T00:00:00Z", "cumulativeCreated": 37, "cumulativeCompleted": 16, "totalScope": 37 },
+    { "date": "2025-01-22T00:00:00Z", "cumulativeCreated": 37, "cumulativeCompleted": 29, "totalScope": 37 },
+    { "date": "2025-01-27T00:00:00Z", "cumulativeCreated": 45, "cumulativeCompleted": 29, "totalScope": 45 },
+    { "date": "2025-01-29T00:00:00Z", "cumulativeCreated": 45, "cumulativeCompleted": 34, "totalScope": 45 },
+    { "date": "2025-01-30T00:00:00Z", "cumulativeCreated": 45, "cumulativeCompleted": 37, "totalScope": 45 },
+    { "date": "2025-02-03T00:00:00Z", "cumulativeCreated": 58, "cumulativeCompleted": 42, "totalScope": 58 },
+    { "date": "2025-02-05T00:00:00Z", "cumulativeCreated": 58, "cumulativeCompleted": 42, "totalScope": 58 }
+  ],
+  "lastUpdated": "2025-02-05T14:00:00Z",
+  "team": "Engineering"
+}
