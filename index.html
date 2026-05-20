@@ -4,9 +4,25 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="VelocityMAX - Linear velocity tracking dashboard. Visualize team metrics, cycle times, burnup charts, and status breakdowns." />
     <meta name="theme-color" content="#0f172a" />
-    <title>VelocityMAX – Team Velocity Dashboard</title>
+    <title>VelocityMAX</title>
+
+    <!-- Security headers (GitHub Pages doesn't support HTTP headers, so meta tags) -->
+    <!-- CSP: only load scripts from same origin; allow Linear API and Google Fonts -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self';
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      connect-src 'self' https://api.linear.app;
+      img-src 'self' data:;
+      frame-ancestors 'none';
+      base-uri 'self';
+      form-action 'self';
+    " />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="robots" content="noindex, nofollow" />
   </head>
   <body>
     <div id="root"></div>
