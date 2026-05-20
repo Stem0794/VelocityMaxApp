@@ -22,6 +22,30 @@ export async function fetchTeamName(apiKey, teamId) {
   return d.team?.name || teamId;
 }
 
+export async function fetchTeams(apiKey) {
+  const data = await gql(apiKey, `
+    query {
+      teams(first: 50) {
+        nodes { id name }
+      }
+    }
+  `);
+  return data.teams.nodes.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function fetchProjects(apiKey, teamId) {
+  const data = await gql(apiKey, `
+    query($teamId: String!) {
+      team(id: $teamId) {
+        projects(first: 100) {
+          nodes { id name }
+        }
+      }
+    }
+  `, { teamId });
+  return (data.team?.projects?.nodes || []).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function fetchIssues(apiKey, teamId, projectIds = []) {
   const issues = [];
   let cursor = null;

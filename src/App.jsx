@@ -104,7 +104,7 @@ export default function App() {
 
     try {
       const [teamName, rawIssues] = await Promise.all([
-        fetchTeamName(key, preset.teamId),
+        preset.teamName ? Promise.resolve(preset.teamName) : fetchTeamName(key, preset.teamId),
         fetchIssues(key, preset.teamId, preset.projectIds),
       ]);
       if (fetchSeq.current !== seq) return;
