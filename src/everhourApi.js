@@ -1,4 +1,5 @@
 const API = 'https://api.everhour.com';
+const PAGE_SIZE = 50;
 
 async function everhourGet(apiKey, path) {
   let res;
@@ -14,9 +15,18 @@ async function everhourGet(apiKey, path) {
 }
 
 export async function fetchEverhourProjects(apiKey) {
-  const data = await everhourGet(apiKey, '/projects?limit=250');
-  return (Array.isArray(data) ? data : [])
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const all = [];
+  let page = 1;
+
+  while (true) {
+    const data = await everhourGet(apiKey, `/projects?limit=${PAGE_SIZE}&page=${page}`);
+    const items = Array.isArray(data) ? data : [];
+    all.push(...items);
+    if (items.length < PAGE_SIZE) break;
+    page++;
+  }
+
+  return all.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 }
 
 // Returns budget summary for the given project IDs (or all if none given).
