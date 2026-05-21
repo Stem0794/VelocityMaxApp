@@ -186,6 +186,85 @@ body {
   opacity: 0.85;
 }
 
+.health-export-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.65rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+
+.health-export-btn:hover {
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--text-primary);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.health-card {
+  position: relative;
+}
+
+.quick-range-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.quick-range-btn {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.55rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.quick-range-btn:hover {
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--text-primary);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.chart-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.chart-drag-handle {
+  color: var(--text-secondary);
+  cursor: grab;
+  font-size: 1.1rem;
+  opacity: 0.3;
+  user-select: none;
+  padding: 0 0.25rem;
+  flex-shrink: 0;
+}
+
+.chart-drag-handle:hover {
+  opacity: 0.7;
+}
+
+.chart-drag-over {
+  border-color: rgba(99, 102, 241, 0.6) !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25), 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+}
+
+.charts-grid .chart-full-width {
+  grid-column: 1 / -1;
+}
+
 .chart-description {
   font-size: 0.875rem;
   color: var(--text-secondary);
