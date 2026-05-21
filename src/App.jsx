@@ -506,7 +506,7 @@ export default function App() {
     : '—';
 
   return (
-    <div className="app-container">
+    <>
       {showSettings && (
         <SettingsModal
           apiKey={apiKey}
@@ -516,6 +516,7 @@ export default function App() {
           onClose={() => setShowSettings(false)}
         />
       )}
+      <div className="app-container">
 
       {/* ─── Header ─── */}
       <div className="header">
@@ -791,5 +792,6 @@ export default function App() {
 
       </div>
     </div>
+    </>
   );
 }
