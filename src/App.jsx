@@ -85,15 +85,6 @@ function MultiSelectDropdown({ options, selected, onChange, placeholder = 'All' 
   );
 }
 
-function getISOWeekLabel(dateStr) {
-  const d = new Date(dateStr);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const yearStart = new Date(d.getFullYear(), 0, 1);
-  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  return d.getFullYear() + '-W' + (weekNo < 10 ? '0' : '') + weekNo;
-}
-
 export default function App() {
   // ─── Auth ───
   const [password, setPassword] = useState('');
