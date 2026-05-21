@@ -107,6 +107,12 @@ function MultiSelectDropdown({ options, selected, onChange, placeholder = 'All' 
   );
 }
 
+const DEFAULT_CHART_ORDER = [
+  'velocity', 'cycle-compare', 'cycle-times', 'burnup',
+  'burndown', 'lead-time', 'flow-efficiency', 'status-breakdown',
+  'cfd', 'prediction', 'issues',
+];
+
 export default function App() {
   // ─── Auth ───
   const [password, setPassword] = useState('');
@@ -154,6 +160,18 @@ export default function App() {
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(
     () => localStorage.getItem('vmAutoRefresh') || 'off'
   );
+  const [chartOrder, setChartOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem('vmChartOrder');
+      if (!saved) return DEFAULT_CHART_ORDER;
+      const parsed = JSON.parse(saved);
+      // Append any chart IDs added since the user last saved their order
+      const missing = DEFAULT_CHART_ORDER.filter(id => !parsed.includes(id));
+      return [...parsed, ...missing];
+    } catch { return DEFAULT_CHART_ORDER; }
+  });
+  const [dragOverId, setDragOverId] = useState(null);
+  const dragItem = useRef(null);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -766,6 +784,377 @@ export default function App() {
     a.click();
   };
 
+  const handleDragStart = (e, id) => {
+    dragItem.current = id;
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDrop = (e, targetId) => {
+    e.preventDefault();
+    const sourceId = dragItem.current;
+    if (!sourceId || sourceId === targetId) return;
+    const next = [...chartOrder];
+    const from = next.indexOf(sourceId);
+    const to = next.indexOf(targetId);
+    if (from === -1 || to === -1) return;
+    next.splice(from, 1);
+    next.splice(to, 0, sourceId);
+    setChartOrder(next);
+    localStorage.setItem('vmChartOrder', JSON.stringify(next));
+    dragItem.current = null;
+    setDragOverId(null);
+  };
+
+  const resetChartOrder = () => {
+    setChartOrder(DEFAULT_CHART_ORDER);
+    localStorage.removeItem('vmChartOrder');
+  };
+
+  const chartCardProps = (id, fullWidth = false) => ({
+    key: id,
+    className: `glass-card${fullWidth ? ' chart-full-width' : ''}${dragOverId === id ? ' chart-drag-over' : ''}`,
+    draggable: true,
+    onDragStart: e => handleDragStart(e, id),
+    onDragEnter: () => dragItem.current && dragItem.current !== id && setDragOverId(id),
+    onDragOver: e => e.preventDefault(),
+    onDragLeave: e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverId(null); },
+    onDrop: e => handleDrop(e, id),
+    onDragEnd: () => { dragItem.current = null; setDragOverId(null); },
+  });
+
+  const DragHandle = () => (
+    <span className="chart-drag-handle" title="Drag to reorder">⠿</span>
+  );
+
+  const renderChart = (id) => {
+    switch (id) {
+
+      case 'velocity': return (
+        <div {...chartCardProps('velocity')}>
+          <div className="chart-title-row"><div className="chart-title">Weekly Velocity</div><DragHandle /></div>
+          <div className="chart-description">
+            Points delivered (purple bars) and ticket count (red line) per ISO week.
+            The dashed green line is a 4-week rolling average — a rising trend means the team is accelerating.
+            <em> e.g. a bar at 20 pts with 5 tickets = 5 issues completed worth 20 story points that week.</em>
+          </div>
+          <div className="chart-wrapper">
+            <ResponsiveContainer width="100%" height={350}>
+              <ComposedChart data={velocityData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                <XAxis dataKey="week" stroke="var(--text-secondary)" fontSize={12} />
+                <YAxis yAxisId="left" stroke="var(--text-secondary)" fontSize={12} />
+                <YAxis yAxisId="right" orientation="right" stroke="var(--text-secondary)" fontSize={12} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+                <Bar yAxisId="left" dataKey="points" name="Points Completed" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="right" type="monotone" dataKey="count" name="Tickets Completed" stroke="var(--chart-red)" strokeWidth={3} dot={{ r: 4 }} />
+                <Line yAxisId="right" type="monotone" dataKey="rollingAvgCount" name="4-wk Avg (tickets)" stroke="var(--chart-green)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      );
+
+      case 'cycle-compare': {
+        if (cycleComparison.length < 2) return null;
+        return (
+          <div {...chartCardProps('cycle-compare')}>
+            <div className="chart-title-row"><div className="chart-title">Cycle Comparison</div><DragHandle /></div>
+            <div className="chart-description">
+              Last {cycleComparison.length} cycles side by side — points delivered (bars, left axis) and completion rate % (line, right axis).
+              <em> ▶ marks the current active cycle.</em>
+            </div>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={350}>
+                <ComposedChart data={cycleComparison} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                  <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
+                  <YAxis yAxisId="left" stroke="var(--text-secondary)" fontSize={12} />
+                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="var(--text-secondary)" fontSize={12} tickFormatter={v => `${v}%`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Bar yAxisId="left" dataKey="points" name="Points" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="tickets" name="Tickets" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="completionPct" name="Completion %" stroke="var(--chart-green)" strokeWidth={2} dot={{ r: 4 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        );
+      }
+
+      case 'cycle-times': return (
+        <div {...chartCardProps('cycle-times')}>
+          <div className="chart-title-row"><div className="chart-title">Issue Cycle Times</div><DragHandle /></div>
+          <div className="chart-description">
+            Each dot is one completed issue — horizontal axis is completion date, vertical axis is days in progress.
+            Red dots spent more than 14 days in progress and may warrant a retro discussion.
+            <em> e.g. a blue dot at 5d on Jan 10 = an issue completed Jan 10 that took 5 days to finish.</em>
+          </div>
+          <div className="chart-wrapper">
+            <ResponsiveContainer width="100%" height={350}>
+              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                <XAxis type="number" dataKey="completed" name="Date" domain={['dataMin', 'dataMax']}
+                  tickFormatter={tick => new Date(tick).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
+                <YAxis type="number" dataKey="cycleTime" name="Cycle Time" stroke="var(--text-secondary)" fontSize={12} />
+                <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
+                <Scatter name="Issues" data={cycleTimeData} fill="var(--chart-blue)">
+                  {cycleTimeData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.cycleTime > 14 ? 'var(--chart-red)' : 'var(--chart-blue)'} />
+                  ))}
+                </Scatter>
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      );
+
+      case 'burnup': return (
+        <div {...chartCardProps('burnup')}>
+          <div className="chart-title-row"><div className="chart-title">Burn-up Chart</div><DragHandle /></div>
+          <div className="chart-description">
+            Tracks total scope (red) and cumulative completed work (green) over the project's life.
+            When the green line meets the red line, all committed scope is done.
+            <em> e.g. red at 100 pts and green at 70 pts = 30 pts still remaining.</em>
+          </div>
+          <div className="chart-wrapper">
+            <ResponsiveContainer width="100%" height={350}>
+              <LineChart data={burnupData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
+                <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+                <Line type="stepAfter" dataKey="totalScope" name="Total Scope" stroke="var(--chart-red)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="cumulativeCompleted" name="Completed" stroke="var(--chart-green)" strokeWidth={3} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      );
+
+      case 'burndown': {
+        if (!uniqueCycles.length) return null;
+        return (
+          <div {...chartCardProps('burndown')}>
+            <div className="chart-title-row"><div className="chart-title">Sprint Burndown</div><DragHandle /></div>
+            <div className="chart-description">
+              Remaining story points (purple) vs the ideal straight-line burndown (dashed) for a given sprint.
+              Dropping faster than ideal = ahead of schedule; a flat line = blocked work.
+              <em> e.g. remaining at 15 pts on day 5 of a 10-day sprint with 30 pts total = behind the ideal pace of 15 pts remaining.</em>
+            </div>
+            <div className="filter-group" style={{ marginBottom: '1rem' }}>
+              <label>Sprint / Cycle</label>
+              <select
+                value={selectedCycle}
+                onChange={e => setSelectedCycle(e.target.value)}
+                style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)', padding: '0.5rem 0.75rem', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="">— Select a cycle —</option>
+                {uniqueCycles.map(c => {
+                  const isCurrent = c.number === currentCycleNumber;
+                  const dateRange = c.startsAt && c.endsAt
+                    ? ` · ${new Date(c.startsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${new Date(c.endsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                    : '';
+                  return (
+                    <option key={c.number} value={c.number}>
+                      {isCurrent ? '▶ ' : ''}Cycle {c.number}{isCurrent ? ' (current)' : ''}{dateRange}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            {sprintBurndownData.length > 0 ? (
+              <div className="chart-wrapper">
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={sprintBurndownData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
+                    <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend />
+                    <Line type="monotone" dataKey="remaining" name="Remaining" stroke="var(--chart-purple)" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="ideal" name="Ideal" stroke="var(--text-secondary)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>No point data for this cycle.</p>
+            )}
+          </div>
+        );
+      }
+
+      case 'lead-time': return (
+        <div {...chartCardProps('lead-time')}>
+          <div className="chart-title-row"><div className="chart-title">Lead Time Distribution</div><DragHandle /></div>
+          <div className="chart-description">
+            Time from issue creation to completion, grouped into buckets.
+            A tall bar on the left = most issues are delivered quickly; a tail on the right = some issues linger.
+            <em> e.g. a tall "3–7d" bar means the majority of issues are shipped within a week of being opened.</em>
+          </div>
+          <div className="chart-wrapper">
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart data={leadTimeHistogram} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
+                <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="count" name="Issues" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      );
+
+      case 'flow-efficiency': return (
+        <div {...chartCardProps('flow-efficiency')}>
+          <div className="chart-title-row"><div className="chart-title">Flow Efficiency</div><DragHandle /></div>
+          <div className="chart-description">
+            Ratio of active work time (cycle time) to total elapsed time (lead time).
+            Higher = less waiting. World-class teams typically reach 40–60%.
+            <em> e.g. 30% means only 30% of an issue's lifetime was active development — 70% was idle/waiting.</em>
+          </div>
+          {flowEfficiency ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '12px', padding: '0.5rem 1.25rem', fontSize: '1.5rem', fontWeight: 700, color: '#a5b4fc' }}>
+                  {flowEfficiency.avg}%
+                </div>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>avg flow efficiency</span>
+              </div>
+              <div className="chart-wrapper" style={{ height: 260 }}>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={flowEfficiency.distribution} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                    <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
+                    <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="count" name="Issues" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          ) : (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>
+              Not enough data. Requires issues with both cycle time and lead time.
+            </p>
+          )}
+        </div>
+      );
+
+      case 'status-breakdown': return (
+        <div {...chartCardProps('status-breakdown')}>
+          <div className="chart-title-row"><div className="chart-title">Time Spent in Each Status</div><DragHandle /></div>
+          <div className="chart-description">
+            Average and median days issues spend in each workflow state. Click chips to show/hide states.
+            Large gaps between avg and median suggest a few outliers are skewing the average.
+            <em> e.g. "In Review" avg=4d, median=1d means most reviews are fast but a few linger and pull the average up.</em>
+            {loadingHistory && (
+              <span className="history-badge" style={{ marginLeft: '0.5rem' }}>
+                ⟳ {historyProgress.done}/{historyProgress.total} loaded
+              </span>
+            )}
+          </div>
+          <div className="status-toggle-bar">
+            {allStatuses.map(s => (
+              <button key={s} className={`status-chip ${selectedStatuses.includes(s) ? 'active' : ''}`} onClick={() => toggleStatus(s)}>{s}</button>
+            ))}
+          </div>
+          {allStatuses.length === 0 && !loadingHistory && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>
+              Status breakdown requires history data. It loads automatically after issues are fetched.
+            </p>
+          )}
+          <div className="chart-wrapper">
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart layout="vertical" data={statusBreakdownData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
+                <XAxis type="number" stroke="var(--text-secondary)" fontSize={12} />
+                <YAxis dataKey="status" type="category" width={100} stroke="var(--text-secondary)" fontSize={12} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+                <Bar dataKey="avg" name="Avg Days" fill="var(--chart-purple)" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="median" name="Median Days" fill="var(--chart-green)" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      );
+
+      case 'cfd': return (
+        <div {...chartCardProps('cfd', true)}>
+          <div className="chart-title-row"><div className="chart-title">Cumulative Flow Diagram</div><DragHandle /></div>
+          <div className="chart-description">
+            Weekly snapshot of how many issues sit in each phase. A healthy team shows a steady rise in Done and a stable In Progress band.
+            A widening "In Progress" band signals work piling up faster than it exits — a bottleneck.
+            <em> e.g. In Progress growing from 5 to 20 over 4 weeks while Done barely moves = WIP overload.</em>
+          </div>
+          <div className="chart-wrapper">
+            <ResponsiveContainer width="100%" height={350}>
+              <AreaChart data={cumulativeFlowData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
+                <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+                <Area type="monotone" dataKey="Cancelled" stackId="1" stroke="var(--chart-red)" fill="var(--chart-red)" fillOpacity={0.4} />
+                <Area type="monotone" dataKey="Done" stackId="1" stroke="var(--chart-green)" fill="var(--chart-green)" fillOpacity={0.4} />
+                <Area type="monotone" dataKey="In Progress" stackId="1" stroke="var(--chart-purple)" fill="var(--chart-purple)" fillOpacity={0.4} />
+                <Area type="monotone" dataKey="Backlog" stackId="1" stroke="var(--text-secondary)" fill="#64748b" fillOpacity={0.4} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      );
+
+      case 'prediction': {
+        if (!predictionResult) return null;
+        return (
+          <div {...chartCardProps('prediction', true)}>
+            <div className="chart-title-row"><div className="chart-title">Scope Prediction</div><DragHandle /></div>
+            <div className="chart-description">
+              The blue line shows actual remaining points to date. Dashed lines project when the backlog reaches zero based on the last 4 weeks of velocity.
+              The three scenarios use the best week (optimistic), average, and worst week (pessimistic) from that window.
+              <em> e.g. if pessimistic shows June and optimistic shows March, plan around April–May.</em>
+            </div>
+            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <div><span style={{ color: 'var(--chart-green)', fontWeight: 600 }}>Optimistic: </span><span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.optimistic}</span></div>
+              <div><span style={{ color: 'var(--chart-purple)', fontWeight: 600 }}>Avg: </span><span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.avg}</span></div>
+              <div><span style={{ color: 'var(--chart-red)', fontWeight: 600 }}>Pessimistic: </span><span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.pessimistic}</span></div>
+              <div><span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.remaining} pts remaining</span></div>
+            </div>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={350}>
+                <LineChart data={predictionResult.chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
+                  <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Line type="monotone" dataKey="actual" name="Actual Remaining" stroke="var(--chart-blue)" strokeWidth={2} dot={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="avg" name="Avg Forecast" stroke="var(--chart-purple)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="optimistic" name="Optimistic" stroke="var(--chart-green)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="pessimistic" name="Pessimistic" stroke="var(--chart-red)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        );
+      }
+
+      case 'issues': return (
+        <div {...chartCardProps('issues', true)}>
+          <div className="chart-title-row"><div className="chart-title">Issues</div><DragHandle /></div>
+          <IssuesTable issues={filteredIssues} />
+        </div>
+      );
+
+      default: return null;
+    }
+  };
+
   return (
     <>
       {showSettings && (
@@ -1006,334 +1395,15 @@ export default function App() {
 
       {/* ─── Charts ─── */}
       <div className="charts-grid">
-
-        {/* Weekly Velocity */}
-        <div className="glass-card">
-          <div className="chart-title">Weekly Velocity</div>
-          <div className="chart-description">
-            Points delivered (purple bars) and ticket count (red line) per ISO week.
-            The dashed green line is a 4-week rolling average — a rising trend means the team is accelerating.
-            <em> e.g. a bar at 20 pts with 5 tickets = 5 issues completed worth 20 story points that week.</em>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <ComposedChart data={velocityData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                <XAxis dataKey="week" stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis yAxisId="left" stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis yAxisId="right" orientation="right" stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Bar yAxisId="left" dataKey="points" name="Points Completed" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="right" type="monotone" dataKey="count" name="Tickets Completed" stroke="var(--chart-red)" strokeWidth={3} dot={{ r: 4 }} />
-                <Line yAxisId="right" type="monotone" dataKey="rollingAvgCount" name="4-wk Avg (tickets)" stroke="var(--chart-green)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Cycle-over-cycle comparison */}
-        {cycleComparison.length >= 2 && (
-          <div className="glass-card">
-            <div className="chart-title">Cycle Comparison</div>
-            <div className="chart-description">
-              Last {cycleComparison.length} cycles side by side — points delivered (bars, left axis) and completion rate % (line, right axis).
-              <em> ▶ marks the current active cycle.</em>
-            </div>
-            <div className="chart-wrapper">
-              <ResponsiveContainer width="100%" height={350}>
-                <ComposedChart data={cycleComparison} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                  <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
-                  <YAxis yAxisId="left" stroke="var(--text-secondary)" fontSize={12} />
-                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="var(--text-secondary)" fontSize={12} tickFormatter={v => `${v}%`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend />
-                  <Bar yAxisId="left" dataKey="points" name="Points" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="left" dataKey="tickets" name="Tickets" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="completionPct" name="Completion %" stroke="var(--chart-green)" strokeWidth={2} dot={{ r: 4 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        )}
-
-        {/* Issue Cycle Times */}
-        <div className="glass-card">
-          <div className="chart-title">Issue Cycle Times</div>
-          <div className="chart-description">
-            Each dot is one completed issue — horizontal axis is completion date, vertical axis is days in progress.
-            Red dots spent more than 14 days in progress and may warrant a retro discussion.
-            <em> e.g. a blue dot at 5d on Jan 10 = an issue completed Jan 10 that took 5 days to finish.</em>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                <XAxis type="number" dataKey="completed" name="Date" domain={['dataMin', 'dataMax']}
-                  tickFormatter={(tick) => new Date(tick).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis type="number" dataKey="cycleTime" name="Cycle Time" stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
-                <Scatter name="Issues" data={cycleTimeData} fill="var(--chart-blue)">
-                  {cycleTimeData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.cycleTime > 14 ? 'var(--chart-red)' : 'var(--chart-blue)'} />
-                  ))}
-                </Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Burn-up Chart */}
-        <div className="glass-card">
-          <div className="chart-title">Burn-up Chart</div>
-          <div className="chart-description">
-            Tracks total scope (red) and cumulative completed work (green) over the project's life.
-            When the green line meets the red line, all committed scope is done.
-            <em> e.g. red at 100 pts and green at 70 pts = 30 pts still remaining.</em>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <LineChart data={burnupData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(t) => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Line type="stepAfter" dataKey="totalScope" name="Total Scope" stroke="var(--chart-red)" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="cumulativeCompleted" name="Completed" stroke="var(--chart-green)" strokeWidth={3} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Sprint Burndown */}
-        {uniqueCycles.length > 0 && (
-          <div className="glass-card">
-            <div className="chart-title">Sprint Burndown</div>
-            <div className="chart-description">
-              Remaining story points (purple) vs the ideal straight-line burndown (dashed) for a given sprint.
-              Dropping faster than ideal = ahead of schedule; a flat line = blocked work.
-              <em> e.g. remaining at 15 pts on day 5 of a 10-day sprint with 30 pts total = behind the ideal pace of 15 pts remaining.</em>
-            </div>
-            <div className="filter-group" style={{ marginBottom: '1rem' }}>
-              <label>Sprint / Cycle</label>
-              <select
-                value={selectedCycle}
-                onChange={e => setSelectedCycle(e.target.value)}
-                style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)', padding: '0.5rem 0.75rem', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
-              >
-                <option value="">— Select a cycle —</option>
-                {uniqueCycles.map(c => {
-                  const isCurrent = c.number === currentCycleNumber;
-                  const dateRange = c.startsAt && c.endsAt
-                    ? ` · ${new Date(c.startsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${new Date(c.endsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
-                    : '';
-                  return (
-                    <option key={c.number} value={c.number}>
-                      {isCurrent ? '▶ ' : ''}Cycle {c.number}{isCurrent ? ' (current)' : ''}{dateRange}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-            {sprintBurndownData.length > 0 ? (
-              <div className="chart-wrapper">
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={sprintBurndownData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                    <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-                    <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend />
-                    <Line type="monotone" dataKey="remaining" name="Remaining" stroke="var(--chart-purple)" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="ideal" name="Ideal" stroke="var(--text-secondary)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>No point data for this cycle.</p>
-            )}
-          </div>
-        )}
-
-        {/* Lead Time Distribution */}
-        <div className="glass-card">
-          <div className="chart-title">Lead Time Distribution</div>
-          <div className="chart-description">
-            Time from issue creation to completion, grouped into buckets.
-            A tall bar on the left = most issues are delivered quickly; a tail on the right = some issues linger.
-            <em> e.g. a tall "3–7d" bar means the majority of issues are shipped within a week of being opened.</em>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={leadTimeHistogram} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="count" name="Issues" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Flow Efficiency */}
-        <div className="glass-card">
-          <div className="chart-title">Flow Efficiency</div>
-          <div className="chart-description">
-            Ratio of active work time (cycle time) to total elapsed time (lead time).
-            Higher = less waiting. World-class teams typically reach 40–60%.
-            <em> e.g. 30% means only 30% of an issue's lifetime was active development — 70% was idle/waiting.</em>
-          </div>
-          {flowEfficiency ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                <div style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '12px', padding: '0.5rem 1.25rem', fontSize: '1.5rem', fontWeight: 700, color: '#a5b4fc' }}>
-                  {flowEfficiency.avg}%
-                </div>
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>avg flow efficiency</span>
-              </div>
-              <div className="chart-wrapper" style={{ height: 260 }}>
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={flowEfficiency.distribution} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                    <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
-                    <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="count" name="Issues" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </>
-          ) : (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>
-              Not enough data. Requires issues with both cycle time and lead time.
-            </p>
-          )}
-        </div>
-
-        {/* Status Breakdown */}
-        <div className="glass-card">
-          <div className="chart-title">Time Spent in Each Status</div>
-          <div className="chart-description">
-            Average and median days issues spend in each workflow state. Click chips to show/hide states.
-            Large gaps between avg and median suggest a few outliers are skewing the average.
-            <em> e.g. "In Review" avg=4d, median=1d means most reviews are fast but a few linger and pull the average up.</em>
-            {loadingHistory && (
-              <span className="history-badge" style={{ marginLeft: '0.5rem' }}>
-                ⟳ {historyProgress.done}/{historyProgress.total} loaded
-              </span>
-            )}
-          </div>
-          <div className="status-toggle-bar">
-            {allStatuses.map(s => (
-              <button
-                key={s}
-                className={`status-chip ${selectedStatuses.includes(s) ? 'active' : ''}`}
-                onClick={() => toggleStatus(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          {allStatuses.length === 0 && !loadingHistory && (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>
-              Status breakdown requires history data. It loads automatically after issues are fetched.
-            </p>
-          )}
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart layout="vertical" data={statusBreakdownData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
-                <XAxis type="number" stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis dataKey="status" type="category" width={100} stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Bar dataKey="avg" name="Avg Days" fill="var(--chart-purple)" radius={[0, 4, 4, 0]} />
-                <Bar dataKey="median" name="Median Days" fill="var(--chart-green)" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
+        {chartOrder.map(id => renderChart(id))}
       </div>
-
-      {/* Cumulative Flow Diagram (full-width) */}
-      <div className="glass-card" style={{ marginTop: '2rem' }}>
-        <div className="chart-title">Cumulative Flow Diagram</div>
-        <div className="chart-description">
-          Weekly snapshot of how many issues sit in each phase. A healthy team shows a steady rise in Done and a stable In Progress band.
-          A widening "In Progress" band signals work piling up faster than it exits — a bottleneck.
-          <em> e.g. In Progress growing from 5 to 20 over 4 weeks while Done barely moves = WIP overload.</em>
-        </div>
-        <div className="chart-wrapper">
-          <ResponsiveContainer width="100%" height={350}>
-            <AreaChart data={cumulativeFlowData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-              <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-              <YAxis stroke="var(--text-secondary)" fontSize={12} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend />
-              <Area type="monotone" dataKey="Cancelled" name="Cancelled" stackId="1" stroke="var(--chart-red)" fill="var(--chart-red)" fillOpacity={0.4} />
-              <Area type="monotone" dataKey="Done" name="Done" stackId="1" stroke="var(--chart-green)" fill="var(--chart-green)" fillOpacity={0.4} />
-              <Area type="monotone" dataKey="In Progress" name="In Progress" stackId="1" stroke="var(--chart-purple)" fill="var(--chart-purple)" fillOpacity={0.4} />
-              <Area type="monotone" dataKey="Backlog" name="Backlog" stackId="1" stroke="var(--text-secondary)" fill="#64748b" fillOpacity={0.4} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Scope Prediction (full-width, conditional) */}
-      {predictionResult && (
-        <div className="glass-card" style={{ marginTop: '2rem' }}>
-          <div className="chart-title">Scope Prediction</div>
-          <div className="chart-description">
-            The blue line shows actual remaining points to date. Dashed lines project when the backlog reaches zero based on the last 4 weeks of velocity.
-            The three scenarios use the best week (optimistic), average, and worst week (pessimistic) from that window.
-            <em> e.g. if pessimistic shows June and optimistic shows March, plan around April–May.</em>
-          </div>
-          <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-            <div>
-              <span style={{ color: 'var(--chart-green)', fontWeight: 600 }}>Optimistic: </span>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.optimistic}</span>
-            </div>
-            <div>
-              <span style={{ color: 'var(--chart-purple)', fontWeight: 600 }}>Avg: </span>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.avg}</span>
-            </div>
-            <div>
-              <span style={{ color: 'var(--chart-red)', fontWeight: 600 }}>Pessimistic: </span>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.pessimistic}</span>
-            </div>
-            <div>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.remaining} pts remaining</span>
-            </div>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <LineChart data={predictionResult.chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Line type="monotone" dataKey="actual" name="Actual Remaining" stroke="var(--chart-blue)" strokeWidth={2} dot={false} connectNulls={false} />
-                <Line type="monotone" dataKey="avg" name="Avg Forecast" stroke="var(--chart-purple)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
-                <Line type="monotone" dataKey="optimistic" name="Optimistic" stroke="var(--chart-green)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
-                <Line type="monotone" dataKey="pessimistic" name="Pessimistic" stroke="var(--chart-red)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+      {JSON.stringify(chartOrder) !== JSON.stringify(DEFAULT_CHART_ORDER) && (
+        <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+          <button className="btn-secondary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }} onClick={resetChartOrder}>
+            ↺ Reset chart order
+          </button>
         </div>
       )}
-
-      {/* Issues Table (full-width, outside charts-grid) */}
-      <div className="glass-card" style={{ marginTop: '2rem' }}>
-        <div className="chart-title">Issues</div>
-        <IssuesTable issues={filteredIssues} />
-      </div>
-
     </div>
     </>
   );
