@@ -41,27 +41,26 @@ export async function fetchEverhourBudgets(apiKey, projectIds = []) {
   return projects.filter(Boolean).map(p => {
     const b = p.budget;
 
-    // Log raw budget data so the actual API field names are visible in the browser console
-    console.log('[Everhour]', p.name, { budget: b, time: p.time });
+    if (!b) {
+      return { id: String(p.id), name: p.name || 'Unnamed', budgetDisplay: null, consumedDisplay: null, percentUsed: null };
+    }
 
-    const isFinancial = b?.type === 'financial' || b?.type === 'money';
-
-    // Try common field names for budget total and consumed
-    const rawTotal = b?.value ?? b?.amount ?? b?.total ?? null;
-    // For consumed: progress field, or fall back to project-level time (seconds)
-    const rawConsumed = b?.progress ?? b?.spent ?? b?.consumed ?? p.time ?? null;
+    // Total budget is in b.budget (nested), consumed in b.progress.
+    // Money values are in cents (e.g. 1070000 = €10,700).
+    const totalRaw = b.budget ?? b.value ?? null;
+    const consumedRaw = b.progress ?? null;
+    const isMoneyType = b.type === 'money' || b.type === 'financial';
 
     let budgetDisplay, consumedDisplay, percentUsed;
 
-    if (isFinancial) {
-      // Financial budget — values are in the team's currency (€)
-      budgetDisplay = rawTotal != null ? formatEuros(rawTotal) : null;
-      consumedDisplay = rawConsumed != null ? formatEuros(rawConsumed) : null;
-      percentUsed = rawTotal ? Math.round((rawConsumed / rawTotal) * 100) : null;
+    if (isMoneyType) {
+      budgetDisplay = totalRaw != null ? formatEuros(totalRaw / 100) : null;
+      consumedDisplay = consumedRaw != null ? formatEuros(consumedRaw / 100) : null;
+      percentUsed = totalRaw ? Math.round((consumedRaw / totalRaw) * 100) : null;
     } else {
-      // Time budget — values in seconds, display as hours
-      const budgetH = rawTotal != null ? Math.round(rawTotal / 3600 * 10) / 10 : null;
-      const consumedH = rawConsumed != null ? Math.round(rawConsumed / 3600 * 10) / 10 : null;
+      // Time budget — values in seconds
+      const budgetH = totalRaw != null ? Math.round(totalRaw / 3600 * 10) / 10 : null;
+      const consumedH = consumedRaw != null ? Math.round(consumedRaw / 3600 * 10) / 10 : null;
       budgetDisplay = budgetH != null ? `${budgetH}h` : null;
       consumedDisplay = consumedH != null ? `${consumedH}h` : null;
       percentUsed = budgetH ? Math.round((consumedH / budgetH) * 100) : null;
@@ -70,7 +69,7 @@ export async function fetchEverhourBudgets(apiKey, projectIds = []) {
     return {
       id: String(p.id),
       name: p.name || 'Unnamed',
-      isFinancial,
+      isFinancial: isMoneyType,
       budgetDisplay,
       consumedDisplay,
       percentUsed,
