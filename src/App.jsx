@@ -13,7 +13,9 @@ import SettingsModal from './SettingsModal';
 import { computeVelocityWithTrend, computeLeadTimeHistogram, computeSprintBurndown, computeCumulativeFlow, computeFlowEfficiency, computePrediction } from './computeCharts';
 import IssuesTable from './IssuesTable';
 
-const DEFAULT_PRESETS = [];
+const DEFAULT_PRESETS = [
+  { id: 'demo', name: 'Demo', teamId: '', projectIds: [], everhourProjectIds: [] },
+];
 
 // SHA-256 hash the entered password and compare to the stored hash.
 // The plaintext password is never stored anywhere — only the hash is
@@ -556,18 +558,7 @@ export default function App() {
 
       {/* ─── Header ─── */}
       <div className="header">
-        <div className="header-top">
-          <h1>VelocityMAX Dashboard</h1>
-          <button
-            className="btn-icon"
-            onClick={() => setShowSettings(true)}
-            title="Settings"
-          >
-            ⚙
-          </button>
-        </div>
-
-        {/* Preset bar */}
+        {/* Preset bar + settings button on one row */}
         <div className="preset-bar">
           {presets.map(p => (
             <button
@@ -583,14 +574,17 @@ export default function App() {
             onClick={() => setShowSettings(true)}
             title="Manage presets"
           >
-            {presets.length === 0 ? '+ Add Preset' : '+ Preset'}
+            + Preset
+          </button>
+          <button
+            className="btn-icon"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+          >
+            ⚙
           </button>
         </div>
-        {presets.length === 0 && (
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
-            No presets yet — open ⚙ Settings to add your first one.
-          </p>
-        )}
 
         {data && (
           <p className="header-meta">

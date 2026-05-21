@@ -56,22 +56,7 @@ body {
 }
 
 .header {
-  margin-bottom: 2rem;
-  text-align: center;
-}
-
-.header h1 {
-  font-size: 2.5rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #a5b4fc, #818cf8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 0.5rem;
-}
-
-.header p {
-  color: var(--text-secondary);
-  font-size: 1rem;
+  margin-bottom: 1.25rem;
 }
 
 /* Charts Grid */
@@ -180,13 +165,6 @@ button:active {
 }
 
 /* ─── Header ─── */
-.header-top {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
 
 .header-meta {
   color: var(--text-secondary);
@@ -216,9 +194,9 @@ button:active {
 .preset-bar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
-  justify-content: center;
-  margin-top: 0.75rem;
+  margin-top: 0;
 }
 
 .preset-btn {
