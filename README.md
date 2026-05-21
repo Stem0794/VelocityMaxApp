@@ -10,7 +10,7 @@ Deployed as a static site on GitHub Pages. All API keys stay in the browser — 
 
 - **Linear integration** — issues, cycle time, lead time, weekly velocity, burn-up chart, time-in-status breakdown
 - **Everhour integration** — budget overview per project (consumed vs. total, % used with colour-coded progress bars)
-- **Presets** — one-click switching between team/project combinations (e.g. "Logtex", "TFS TMA", "All")
+- **Presets** — one-click switching between team/project combinations (e.g. "Project 1", "Project 2 TMA", "All")
 - **Filters** — project, assignee, multi-select status, date range; all persist across page refreshes
 - **Password protection** — SHA-256 hashed password baked into the bundle at build time; plaintext never stored anywhere
 - **No backend** — pure static SPA; API keys stored in `localStorage` only
