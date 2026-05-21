@@ -77,6 +77,39 @@ export async function fetchEverhourBudgets(apiKey, projectIds = []) {
   });
 }
 
+export async function fetchMonthlyHours(apiKey, projectIds, monthsBack = 12) {
+  const to = new Date().toISOString().split('T')[0];
+  const fromDate = new Date();
+  fromDate.setMonth(fromDate.getMonth() - monthsBack);
+  const from = fromDate.toISOString().split('T')[0];
+
+  const allEntries = [];
+  for (const projectId of projectIds) {
+    let page = 1;
+    while (true) {
+      const params = new URLSearchParams({ from, to, limit: 250, page });
+      const data = await everhourGet(apiKey, `/projects/${encodeURIComponent(projectId)}/time?${params}`).catch(() => []);
+      const items = Array.isArray(data) ? data : [];
+      allEntries.push(...items.map(e => ({ ...e, _projectId: String(projectId) })));
+      if (items.length < 250) break;
+      page++;
+    }
+  }
+
+  // Aggregate by month and project
+  const monthMap = {};
+  allEntries.forEach(entry => {
+    const month = entry.date?.slice(0, 7);
+    if (!month) return;
+    const projectId = entry._projectId;
+    const hours = Math.round((entry.time || 0) / 3600 * 10) / 10;
+    if (!monthMap[month]) monthMap[month] = { month };
+    monthMap[month][projectId] = (monthMap[month][projectId] || 0) + hours;
+  });
+
+  return Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
+}
+
 function formatEuros(amount) {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(amount);
 }

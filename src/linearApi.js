@@ -92,7 +92,7 @@ export async function fetchIssues(apiKey, teamId, projectIds = []) {
               assignee { name }
               project { name }
               labels { nodes { name } }
-              cycle { number }
+              cycle { number startsAt endsAt }
             }
           }
         }
@@ -178,6 +178,8 @@ export function processIssues(issues) {
       currentStatus: i.state?.name || '',
       currentStatusType: i.state?.type || '',
       cycleNumber: i.cycle?.number || '',
+      cycleStartsAt: i.cycle?.startsAt || '',
+      cycleEndsAt: i.cycle?.endsAt || '',
       createdAt: i.createdAt || '',
       startedAt: i.startedAt || '',
       completedAt: i.completedAt || '',

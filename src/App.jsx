@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ComposedChart, LineChart, Line, BarChart, Bar, ScatterChart, Scatter,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
+  AreaChart, Area,
 } from 'recharts';
 import {
   fetchTeamName, fetchIssues, fetchWorkflowStates, fetchStatusHistories,
   processIssues, computeBurnupData,
 } from './linearApi';
-import { fetchEverhourBudgets } from './everhourApi';
+import { fetchEverhourBudgets, fetchMonthlyHours } from './everhourApi';
 import SettingsModal from './SettingsModal';
+import { computeVelocityWithTrend, computeLeadTimeHistogram, computeSprintBurndown, computeCumulativeFlow, computeFlowEfficiency, computePrediction } from './computeCharts';
+import IssuesTable from './IssuesTable';
 
 const DEFAULT_PRESETS = [];
 
@@ -134,6 +137,8 @@ export default function App() {
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [dateFrom, setDateFrom] = useState(() => sessionStorage.getItem('vmDateFrom') || '');
   const [dateTo, setDateTo] = useState(() => sessionStorage.getItem('vmDateTo') || '');
+  const [selectedCycle, setSelectedCycle] = useState('');
+  const [monthlySpendData, setMonthlySpendData] = useState(null);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -170,13 +175,26 @@ export default function App() {
     setError('');
     setData(null);
     setBudgetData(null);
+    setMonthlySpendData(null);
     setSelectedProject('All');
     setSelectedAssignee('All');
+
+    // Apply preset's saved default filters if they exist
+    if (preset.defaultStatuses !== undefined) setSelectedCurrentStatuses(preset.defaultStatuses);
+    if (preset.defaultDateFrom !== undefined) setDateFrom(preset.defaultDateFrom);
+    if (preset.defaultDateTo !== undefined) setDateTo(preset.defaultDateTo);
 
     // Everhour budget — fire independently so it doesn't block Linear data
     if (everhourApiKey && preset.everhourProjectIds?.length > 0) {
       fetchEverhourBudgets(everhourApiKey, preset.everhourProjectIds)
         .then(rows => { if (fetchSeq.current === seq) setBudgetData(rows); })
+        .catch(() => {});
+    }
+
+    // Monthly spend (Everhour)
+    if (everhourApiKey && preset.everhourProjectIds?.length > 0) {
+      fetchMonthlyHours(everhourApiKey, preset.everhourProjectIds, 12)
+        .then(rows => { if (fetchSeq.current === seq) setMonthlySpendData(rows); })
         .catch(() => {});
     }
 
@@ -273,6 +291,17 @@ export default function App() {
     }
   };
 
+  const handleSaveFiltersToPreset = () => {
+    if (!activePreset) return;
+    const updated = presets.map(p =>
+      p.id === activePresetId
+        ? { ...p, defaultStatuses: selectedCurrentStatuses, defaultDateFrom: dateFrom, defaultDateTo: dateTo }
+        : p
+    );
+    setPresets(updated);
+    localStorage.setItem('vmPresets', JSON.stringify(updated));
+  };
+
   // ─── Derived filter options ───
   const uniqueProjects = useMemo(() => {
     if (!data?.issues) return [];
@@ -320,17 +349,7 @@ export default function App() {
   }, [data, selectedProject, selectedAssignee, selectedCurrentStatuses, dateFrom, dateTo]);
 
   // ─── Chart data ───
-  const velocityData = useMemo(() => {
-    const completed = filteredIssues.filter(i => i.completedAt);
-    const weekMap = {};
-    completed.forEach(p => {
-      const week = getISOWeekLabel(p.completedAt);
-      if (!weekMap[week]) weekMap[week] = { week, points: 0, count: 0 };
-      weekMap[week].points += p.points || 0;
-      weekMap[week].count += 1;
-    });
-    return Object.values(weekMap).sort((a, b) => a.week.localeCompare(b.week));
-  }, [filteredIssues]);
+  const velocityData = useMemo(() => computeVelocityWithTrend(filteredIssues), [filteredIssues]);
 
   const cycleTimeData = useMemo(() => {
     return filteredIssues
@@ -384,6 +403,39 @@ export default function App() {
     }
     return data.burnupData;
   }, [data, filteredIssues, selectedProject, selectedAssignee, selectedCurrentStatuses, dateFrom, dateTo]);
+
+  const leadTimeHistogram = useMemo(() => computeLeadTimeHistogram(filteredIssues), [filteredIssues]);
+
+  const uniqueCycles = useMemo(() => {
+    if (!data?.issues) return [];
+    return [...new Set(data.issues.map(i => i.cycleNumber).filter(Boolean))].sort((a, b) => b - a);
+  }, [data]);
+
+  const sprintBurndownData = useMemo(
+    () => computeSprintBurndown(data?.issues || [], selectedCycle),
+    [data, selectedCycle]
+  );
+
+  const cumulativeFlowData = useMemo(() => computeCumulativeFlow(filteredIssues), [filteredIssues]);
+
+  const flowEfficiency = useMemo(() => computeFlowEfficiency(filteredIssues), [filteredIssues]);
+
+  const predictionResult = useMemo(() => computePrediction(filteredIssues, velocityData), [filteredIssues, velocityData]);
+
+  // For monthly spend chart - flatten to recharts format
+  const monthlySpendChartData = useMemo(() => {
+    if (!monthlySpendData?.length || !activePreset?.everhourProjectIds?.length) return [];
+    const projectIds = activePreset.everhourProjectIds;
+    const projectNames = activePreset.everhourProjectNames || projectIds;
+    return monthlySpendData.map(row => {
+      const entry = { month: row.month };
+      projectIds.forEach((id, idx) => {
+        const name = projectNames[idx] || id;
+        entry[name] = Math.round((row[id] || 0) * 10) / 10;
+      });
+      return entry;
+    });
+  }, [monthlySpendData, activePreset]);
 
   const toggleStatus = (status) => {
     setSelectedStatuses(prev =>
@@ -608,6 +660,13 @@ export default function App() {
           <div className="filter-group">
             <button className="btn-secondary" onClick={resetFilters}>Reset Filters</button>
           </div>
+          {activePreset && (
+            <div className="filter-group">
+              <button className="btn-secondary" onClick={handleSaveFiltersToPreset} title="Save current filters as default for this preset">
+                ★ Save Filters
+              </button>
+            </div>
+          )}
           <div className="filter-group">
             <button
               className="btn-secondary"
@@ -702,6 +761,7 @@ export default function App() {
                 <Legend />
                 <Bar yAxisId="left" dataKey="points" name="Points Completed" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
                 <Line yAxisId="right" type="monotone" dataKey="count" name="Tickets Completed" stroke="var(--chart-red)" strokeWidth={3} dot={{ r: 4 }} />
+                <Line yAxisId="right" type="monotone" dataKey="rollingAvgCount" name="4-wk Avg (tickets)" stroke="var(--chart-green)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -790,7 +850,185 @@ export default function App() {
           </div>
         </div>
 
+        {/* Sprint Burndown */}
+        {uniqueCycles.length > 0 && (
+          <div className="glass-card">
+            <div className="chart-title">Sprint Burndown</div>
+            <div className="chart-description">Remaining points (purple) vs ideal burndown (dashed) for a selected sprint cycle.</div>
+            <div className="filter-group" style={{ marginBottom: '1rem' }}>
+              <label>Sprint / Cycle</label>
+              <select
+                className="filter-group-select"
+                value={selectedCycle}
+                onChange={e => setSelectedCycle(e.target.value)}
+                style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)', padding: '0.5rem 0.75rem', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="">— Select a cycle —</option>
+                {uniqueCycles.map(c => <option key={c} value={c}>Cycle {c}</option>)}
+              </select>
+            </div>
+            {sprintBurndownData.length > 0 ? (
+              <div className="chart-wrapper">
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart data={sprintBurndownData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                    <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
+                    <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend />
+                    <Line type="monotone" dataKey="remaining" name="Remaining" stroke="var(--chart-purple)" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="ideal" name="Ideal" stroke="var(--text-secondary)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>Select a cycle above to see its burndown.</p>
+            )}
+          </div>
+        )}
+
+        {/* Lead Time Distribution */}
+        <div className="glass-card">
+          <div className="chart-title">Lead Time Distribution</div>
+          <div className="chart-description">How long issues take from creation to completion, bucketed by duration.</div>
+          <div className="chart-wrapper">
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart data={leadTimeHistogram} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
+                <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="count" name="Issues" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Prediction Chart */}
+        {predictionResult && (
+          <div className="glass-card">
+            <div className="chart-title">Scope Prediction</div>
+            <div className="chart-description">Historical remaining scope with forecast scenarios based on recent velocity.</div>
+            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <div>
+                <span style={{ color: 'var(--chart-green)', fontWeight: 600 }}>Optimistic: </span>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.optimistic}</span>
+              </div>
+              <div>
+                <span style={{ color: 'var(--chart-purple)', fontWeight: 600 }}>Avg: </span>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.avg}</span>
+              </div>
+              <div>
+                <span style={{ color: 'var(--chart-red)', fontWeight: 600 }}>Pessimistic: </span>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.pessimistic}</span>
+              </div>
+            </div>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={350}>
+                <LineChart data={predictionResult.chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
+                  <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Line type="monotone" dataKey="actual" name="Actual Remaining" stroke="var(--chart-blue)" strokeWidth={2} dot={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="avg" name="Avg Forecast" stroke="var(--chart-purple)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="optimistic" name="Optimistic" stroke="var(--chart-green)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="pessimistic" name="Pessimistic" stroke="var(--chart-red)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* Cumulative Flow Diagram */}
+        <div className="glass-card">
+          <div className="chart-title">Cumulative Flow Diagram</div>
+          <div className="chart-description">Weekly issue counts by phase — shows flow and identifies bottlenecks.</div>
+          <div className="chart-wrapper">
+            <ResponsiveContainer width="100%" height={350}>
+              <AreaChart data={cumulativeFlowData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
+                <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+                <Area type="monotone" dataKey="Cancelled" name="Cancelled" stackId="1" stroke="var(--chart-red)" fill="var(--chart-red)" fillOpacity={0.4} />
+                <Area type="monotone" dataKey="Done" name="Done" stackId="1" stroke="var(--chart-green)" fill="var(--chart-green)" fillOpacity={0.4} />
+                <Area type="monotone" dataKey="In Progress" name="In Progress" stackId="1" stroke="var(--chart-purple)" fill="var(--chart-purple)" fillOpacity={0.4} />
+                <Area type="monotone" dataKey="Backlog" name="Backlog" stackId="1" stroke="var(--text-secondary)" fill="#64748b" fillOpacity={0.4} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Flow Efficiency */}
+        <div className="glass-card">
+          <div className="chart-title">Flow Efficiency</div>
+          <div className="chart-description">Ratio of active work time (cycle time) to total lead time. Higher is better.</div>
+          {flowEfficiency ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '12px', padding: '0.5rem 1.25rem', fontSize: '1.5rem', fontWeight: 700, color: '#a5b4fc' }}>
+                  {flowEfficiency.avg}%
+                </div>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>avg flow efficiency</span>
+              </div>
+              <div className="chart-wrapper" style={{ height: 260 }}>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={flowEfficiency.distribution} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                    <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
+                    <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="count" name="Issues" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          ) : (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>
+              Not enough data. Requires issues with both cycle time and lead time.
+            </p>
+          )}
+        </div>
+
       </div>
+
+      {/* Monthly Spend (full-width, outside charts-grid) */}
+      {monthlySpendChartData.length > 0 && (
+        <div className="glass-card" style={{ marginTop: '2rem' }}>
+          <div className="chart-title">Monthly Hours by Project</div>
+          <div className="chart-description">Everhour hours logged per project per month over the last 12 months.</div>
+          <div className="chart-wrapper">
+            {(() => {
+              const CHART_COLORS = ['var(--chart-blue)', 'var(--chart-purple)', 'var(--chart-green)', 'var(--chart-red)', '#f59e0b', '#06b6d4'];
+              const projectNames = activePreset?.everhourProjectNames || activePreset?.everhourProjectIds || [];
+              return (
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={monthlySpendChartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                    <XAxis dataKey="month" stroke="var(--text-secondary)" fontSize={12} />
+                    <YAxis stroke="var(--text-secondary)" fontSize={12} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend />
+                    {projectNames.map((name, idx) => (
+                      <Bar key={name} dataKey={name} name={name} fill={CHART_COLORS[idx % CHART_COLORS.length]} radius={[4, 4, 0, 0]} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Issues Table (full-width, outside charts-grid) */}
+      <div className="glass-card" style={{ marginTop: '2rem' }}>
+        <div className="chart-title">Issues</div>
+        <IssuesTable issues={filteredIssues} />
+      </div>
+
     </div>
     </>
   );
