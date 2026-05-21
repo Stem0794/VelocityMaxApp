@@ -42,7 +42,7 @@ export async function fetchEverhourBudgets(apiKey, projectIds = []) {
     const b = p.budget;
 
     // Log raw budget data so the actual API field names are visible in the browser console
-    console.log('[Everhour]', p.name, { budget: b, time: p.time });
+    console.log('[Everhour]', p.name, JSON.stringify({ budget: b, time: p.time }, null, 2));
 
     const isFinancial = b?.type === 'financial' || b?.type === 'money';
 
