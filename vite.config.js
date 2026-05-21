@@ -5,4 +5,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/VelocityMaxApp/',
+  build: {
+    // Disable the modulePreload polyfill — it injects an inline script that
+    // violates script-src 'self' CSP. Modern browsers don't need it.
+    modulePreload: { polyfill: false },
+  },
 })
