@@ -51,7 +51,6 @@ body {
 }
 
 .glass-card:hover {
-  transform: translateY(-4px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
 }
 
@@ -84,6 +83,7 @@ body {
   gap: 2rem;
   padding: 1.25rem 1.75rem;
   flex-wrap: wrap;
+  margin-bottom: 2rem;
 }
 
 .health-score-section {
