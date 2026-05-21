@@ -66,6 +66,11 @@ body {
   align-items: start;
 }
 
+/* Prevent grid cells from inflating past their track size */
+.charts-grid > * {
+  min-width: 0;
+}
+
 .chart-wrapper {
   margin-top: 1rem;
 }
@@ -1132,12 +1137,21 @@ button:active {
 }
 
 @media (max-width: 768px) {
+  /* Prevent any overflowing child from widening the page */
+  html, body {
+    overflow-x: hidden;
+  }
+
   .app-container {
     padding: 1rem;
+    width: 100%;
+    overflow-x: hidden;
   }
 
   .charts-grid {
     grid-template-columns: 1fr;
+    /* belt-and-suspenders: cap each chart card to the column width */
+    overflow: hidden;
   }
 
   .kpi-grid {
@@ -1150,6 +1164,12 @@ button:active {
 
   .filter-group {
     min-width: unset;
+    width: 100%;
+  }
+
+  /* Selects and date inputs: stretch to the full filter-group width */
+  .filter-group select,
+  .filter-group input[type="date"] {
     width: 100%;
   }
 
