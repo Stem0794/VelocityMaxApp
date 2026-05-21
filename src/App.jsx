@@ -13,6 +13,26 @@ import SettingsModal from './SettingsModal';
 import { computeVelocityWithTrend, computeLeadTimeHistogram, computeSprintBurndown, computeCumulativeFlow, computeFlowEfficiency, computePrediction } from './computeCharts';
 import IssuesTable from './IssuesTable';
 
+function getHealthGrade(score) {
+  if (score >= 85) return { grade: 'A', label: 'Excellent', color: '#4ade80' };
+  if (score >= 70) return { grade: 'B', label: 'Good', color: '#60a5fa' };
+  if (score >= 55) return { grade: 'C', label: 'Fair', color: '#f59e0b' };
+  if (score >= 40) return { grade: 'D', label: 'Needs Attention', color: '#f97316' };
+  return { grade: 'F', label: 'At Risk', color: '#f87171' };
+}
+
+function factorColor(score) {
+  if (score >= 75) return '#4ade80';
+  if (score >= 50) return '#f59e0b';
+  return '#f87171';
+}
+
+function factorStatus(score) {
+  if (score >= 75) return 'Good';
+  if (score >= 50) return 'Fair';
+  return 'Poor';
+}
+
 const DEFAULT_PRESETS = [
   { id: 'demo', name: 'Demo', teamId: '', projectIds: [], everhourProjectIds: [] },
 ];
@@ -423,6 +443,54 @@ export default function App() {
 
   const predictionResult = useMemo(() => computePrediction(filteredIssues, velocityData), [filteredIssues, velocityData]);
 
+  const healthScore = useMemo(() => {
+    const factors = [];
+
+    // Velocity trend — last 4 weeks vs prior 4 weeks
+    if (velocityData.length >= 2) {
+      const last4 = velocityData.slice(-4).map(w => w.points);
+      const prev4 = velocityData.slice(-8, -4).map(w => w.points);
+      const lastAvg = last4.reduce((s, v) => s + v, 0) / last4.length;
+      const prevAvg = prev4.length ? prev4.reduce((s, v) => s + v, 0) / prev4.length : lastAvg;
+      const ratio = prevAvg > 0 ? lastAvg / prevAvg : 1;
+      const score = ratio >= 1.1 ? 100 : ratio >= 0.9 ? 75 : ratio >= 0.7 ? 50 : 25;
+      const value = ratio >= 1.1
+        ? `+${Math.round((ratio - 1) * 100)}% vs prev`
+        : ratio >= 0.9 ? 'Stable'
+        : `-${Math.round((1 - ratio) * 100)}% vs prev`;
+      factors.push({ key: 'velocity', label: 'Velocity', value, score });
+    }
+
+    // Flow efficiency
+    if (flowEfficiency) {
+      const fe = flowEfficiency.avg;
+      const score = fe >= 50 ? 100 : fe >= 30 ? 75 : fe >= 15 ? 50 : 25;
+      factors.push({ key: 'flow', label: 'Flow Efficiency', value: `${fe}% active time`, score });
+    }
+
+    // Lead time — % of completed issues finishing in ≤7 days
+    const totalLt = leadTimeHistogram.reduce((s, b) => s + b.count, 0);
+    if (totalLt > 0) {
+      const fast = leadTimeHistogram.slice(0, 2).reduce((s, b) => s + b.count, 0); // ≤3d + 3–7d
+      const pct = Math.round(fast / totalLt * 100);
+      const score = pct >= 70 ? 100 : pct >= 50 ? 75 : pct >= 30 ? 50 : 25;
+      factors.push({ key: 'leadtime', label: 'Lead Time', value: `${pct}% done in ≤7d`, score });
+    }
+
+    // Completion rate
+    const total = filteredIssues.length;
+    const done = filteredIssues.filter(i => i.completedAt).length;
+    if (total > 0) {
+      const pct = Math.round(done / total * 100);
+      const score = pct >= 70 ? 100 : pct >= 50 ? 75 : pct >= 30 ? 50 : 25;
+      factors.push({ key: 'completion', label: 'Completion Rate', value: `${pct}% of issues`, score });
+    }
+
+    if (!factors.length) return null;
+    const overall = Math.round(factors.reduce((s, f) => s + f.score, 0) / factors.length);
+    return { overall, factors };
+  }, [velocityData, flowEfficiency, leadTimeHistogram, filteredIssues]);
+
   const toggleStatus = (status) => {
     setSelectedStatuses(prev =>
       prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
@@ -720,6 +788,38 @@ export default function App() {
           <div className="kpi-label">Avg Cycle Time (days)</div>
         </div>
       </div>
+
+      {/* ─── Health Score ─── */}
+      {healthScore && (() => {
+        const grade = getHealthGrade(healthScore.overall);
+        return (
+          <div className="glass-card health-card">
+            <div className="health-score-section">
+              <div className="health-score-circle" style={{ borderColor: grade.color }}>
+                <span className="health-score-number" style={{ color: grade.color }}>{healthScore.overall}</span>
+                <span className="health-score-sub">/ 100</span>
+              </div>
+              <div>
+                <div className="health-grade" style={{ color: grade.color }}>{grade.grade}</div>
+                <div className="health-grade-label">{grade.label}</div>
+              </div>
+            </div>
+            <div className="health-divider" />
+            <div className="health-factors">
+              {healthScore.factors.map(f => (
+                <div key={f.key} className="health-factor">
+                  <div className="health-factor-label">{f.label}</div>
+                  <div className="health-factor-value" style={{ color: factorColor(f.score) }}>{f.value}</div>
+                  <div className="health-factor-bar">
+                    <div style={{ width: `${f.score}%`, background: factorColor(f.score) }} />
+                  </div>
+                  <div className="health-factor-status" style={{ color: factorColor(f.score) }}>{factorStatus(f.score)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ─── Charts ─── */}
       <div className="charts-grid">

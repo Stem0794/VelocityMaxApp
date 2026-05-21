@@ -77,6 +77,115 @@ body {
   margin-bottom: 0.25rem;
 }
 
+/* Health Score */
+.health-card {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 1.25rem 1.75rem;
+  flex-wrap: wrap;
+}
+
+.health-score-section {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-shrink: 0;
+}
+
+.health-score-circle {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  border: 3px solid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.health-score-number {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.health-score-sub {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.health-grade {
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.health-grade-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.health-divider {
+  width: 1px;
+  align-self: stretch;
+  min-height: 60px;
+  background: var(--border-color);
+  flex-shrink: 0;
+}
+
+.health-factors {
+  display: flex;
+  flex: 1;
+  gap: 1.75rem;
+  flex-wrap: wrap;
+}
+
+.health-factor {
+  flex: 1;
+  min-width: 130px;
+}
+
+.health-factor-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 0.3rem;
+}
+
+.health-factor-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 0.45rem;
+}
+
+.health-factor-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 0.3rem;
+}
+
+.health-factor-bar > div {
+  height: 100%;
+  border-radius: 2px;
+}
+
+.health-factor-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+}
+
 .chart-description {
   font-size: 0.875rem;
   color: var(--text-secondary);
