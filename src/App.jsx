@@ -163,6 +163,7 @@ export default function App() {
   };
 
   const loadPresetData = async (preset, key) => {
+    if (!preset) return;
     const seq = ++fetchSeq.current;
     setLoading(true);
     setLoadingHistory(false);
@@ -233,7 +234,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isAuthenticated) loadPresetData(activePreset, apiKey);
+    if (isAuthenticated && activePreset) loadPresetData(activePreset, apiKey);
   }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -445,7 +446,7 @@ export default function App() {
         <div style={{ textAlign: 'center' }}>
           <div className="loader" />
           <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>
-            Loading data for <strong style={{ color: 'var(--text-primary)' }}>{activePreset.name}</strong>…
+            Loading data for <strong style={{ color: 'var(--text-primary)' }}>{activePreset?.name}</strong>…
           </p>
         </div>
       </div>
