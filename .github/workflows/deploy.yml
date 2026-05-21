@@ -1,6 +1,8 @@
 name: Fetch Linear Data and Deploy to Pages
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
