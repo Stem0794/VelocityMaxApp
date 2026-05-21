@@ -177,6 +177,16 @@ export default function App() {
     e.preventDefault();
     setAuthChecking(true);
     setAuthError('');
+
+    // Demo shortcut — always works, forces the Demo preset with mock data
+    if (password === 'velocity') {
+      setActivePresetId('demo');
+      localStorage.setItem('vmActivePreset', 'demo');
+      sessionStorage.setItem('vmAuthed', '1');
+      setIsAuthenticated(true);
+      return;
+    }
+
     // Artificial delay — slows down any brute-force attempt
     await new Promise(r => setTimeout(r, 600));
     const result = await verifyPassword(password);
@@ -604,8 +614,11 @@ export default function App() {
               {authChecking ? 'Checking…' : 'Sign In'}
             </button>
           </form>
+          <p style={{ marginTop: '1.25rem', fontSize: '0.75rem', color: 'var(--text-secondary)', opacity: 0.6 }}>
+            Use <code style={{ fontFamily: 'monospace', background: 'rgba(255,255,255,0.07)', padding: '0.1rem 0.35rem', borderRadius: 4 }}>velocity</code> to explore with demo data
+          </p>
           {import.meta.env.DEV && (
-            <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+            <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
               Dev mode — auth bypassed. Set VITE_APP_PASSWORD_HASH in .env.local to test.
             </p>
           )}
