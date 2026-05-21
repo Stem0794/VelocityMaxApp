@@ -1366,28 +1366,30 @@ export default function App() {
             >
               ↓ PNG
             </button>
-            <div className="health-score-section">
-              <div className="health-score-circle" style={{ borderColor: grade.color }}>
-                <span className="health-score-number" style={{ color: grade.color }}>{healthScore.overall}</span>
-                <span className="health-score-sub">/ 100</span>
-              </div>
-              <div>
-                <div className="health-grade" style={{ color: grade.color }}>{grade.grade}</div>
-                <div className="health-grade-label">{grade.label}</div>
-              </div>
-            </div>
-            <div className="health-divider" />
-            <div className="health-factors">
-              {healthScore.factors.map(f => (
-                <div key={f.key} className="health-factor">
-                  <div className="health-factor-label">{f.label}</div>
-                  <div className="health-factor-value" style={{ color: factorColor(f.score) }}>{f.value}</div>
-                  <div className="health-factor-bar">
-                    <div style={{ width: `${f.score}%`, background: factorColor(f.score) }} />
-                  </div>
-                  <div className="health-factor-status" style={{ color: factorColor(f.score) }}>{factorStatus(f.score)}</div>
+            <div className="health-inner">
+              <div className="health-score-section">
+                <div className="health-score-circle" style={{ borderColor: grade.color }}>
+                  <span className="health-score-number" style={{ color: grade.color }}>{healthScore.overall}</span>
+                  <span className="health-score-sub">/ 100</span>
                 </div>
-              ))}
+                <div>
+                  <div className="health-grade" style={{ color: grade.color }}>{grade.grade}</div>
+                  <div className="health-grade-label">{grade.label}</div>
+                </div>
+              </div>
+              <div className="health-divider" />
+              <div className="health-factors">
+                {healthScore.factors.map(f => (
+                  <div key={f.key} className="health-factor">
+                    <div className="health-factor-label">{f.label}</div>
+                    <div className="health-factor-value" style={{ color: factorColor(f.score) }}>{f.value}</div>
+                    <div className="health-factor-bar">
+                      <div style={{ width: `${f.score}%`, background: factorColor(f.score) }} />
+                    </div>
+                    <div className="health-factor-status" style={{ color: factorColor(f.score) }}>{factorStatus(f.score)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         );
