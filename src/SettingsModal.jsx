@@ -16,6 +16,8 @@ function PresetForm({ preset, apiKey, everhourApiKey, onSave, onCancel }) {
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingEverhour, setLoadingEverhour] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  const [projectSearch, setProjectSearch] = useState('');
+  const [everhourSearch, setEverhourSearch] = useState('');
 
   useEffect(() => {
     if (!apiKey) return;
@@ -116,14 +118,22 @@ function PresetForm({ preset, apiKey, everhourApiKey, onSave, onCancel }) {
           {loadingProjects ? (
             <p className="settings-hint" style={{ margin: 0 }}>Loading projects…</p>
           ) : projects.length > 0 ? (
-            <div className="project-checklist">
-              {projects.map(p => (
-                <label key={p.id} className="project-check-item">
-                  <input type="checkbox" checked={projectIds.includes(p.id)} onChange={() => toggleProject(p.id)} />
-                  {p.name}
-                </label>
-              ))}
-            </div>
+            <>
+              <input
+                className="checklist-search"
+                placeholder="Search projects…"
+                value={projectSearch}
+                onChange={e => setProjectSearch(e.target.value)}
+              />
+              <div className="project-checklist">
+                {projects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase())).map(p => (
+                  <label key={p.id} className="project-check-item">
+                    <input type="checkbox" checked={projectIds.includes(p.id)} onChange={() => toggleProject(p.id)} />
+                    {p.name}
+                  </label>
+                ))}
+              </div>
+            </>
           ) : (
             <p className="settings-hint" style={{ margin: 0 }}>No projects found for this team.</p>
           )}
@@ -140,18 +150,26 @@ function PresetForm({ preset, apiKey, everhourApiKey, onSave, onCancel }) {
         ) : loadingEverhour ? (
           <p className="settings-hint" style={{ margin: 0 }}>Loading Everhour projects…</p>
         ) : everhourProjects.length > 0 ? (
-          <div className="project-checklist">
-            {everhourProjects.map(p => (
-              <label key={p.id} className="project-check-item">
-                <input
-                  type="checkbox"
-                  checked={everhourProjectIds.includes(String(p.id))}
-                  onChange={() => toggleEverhourProject(String(p.id))}
-                />
-                {p.name}
-              </label>
-            ))}
-          </div>
+          <>
+            <input
+              className="checklist-search"
+              placeholder="Search projects…"
+              value={everhourSearch}
+              onChange={e => setEverhourSearch(e.target.value)}
+            />
+            <div className="project-checklist">
+              {everhourProjects.filter(p => p.name.toLowerCase().includes(everhourSearch.toLowerCase())).map(p => (
+                <label key={p.id} className="project-check-item">
+                  <input
+                    type="checkbox"
+                    checked={everhourProjectIds.includes(String(p.id))}
+                    onChange={() => toggleEverhourProject(String(p.id))}
+                  />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+          </>
         ) : (
           <p className="settings-hint" style={{ margin: 0 }}>No Everhour projects found.</p>
         )}
