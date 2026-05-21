@@ -78,12 +78,16 @@ body {
 
 /* Health Score */
 .health-card {
+  position: relative;
+  padding: 1.25rem 1.75rem;
+  margin-bottom: 2rem;
+}
+
+.health-inner {
   display: flex;
   align-items: center;
   gap: 2rem;
-  padding: 1.25rem 1.75rem;
   flex-wrap: wrap;
-  margin-bottom: 2rem;
 }
 
 .health-score-section {
@@ -205,10 +209,6 @@ body {
   background: rgba(99, 102, 241, 0.2);
   color: var(--text-primary);
   border-color: rgba(99, 102, 241, 0.4);
-}
-
-.health-card {
-  position: relative;
 }
 
 .quick-range-btns {

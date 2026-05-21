@@ -720,18 +720,22 @@ export default function App() {
     const cx = 118, cy = TOP + 86;
     ctx.strokeStyle = grade.color; ctx.lineWidth = 5;
     ctx.beginPath(); ctx.arc(cx, cy, 58, 0, Math.PI * 2); ctx.stroke();
+    // Score number — baseline at cy+15, 42px → visual top ≈ cy-16, bottom ≈ cy+20 (inside circle)
     ctx.fillStyle = grade.color;
     ctx.font = 'bold 42px system-ui,sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(String(healthScore.overall), cx, cy + 15);
+    ctx.fillText(String(healthScore.overall), cx, cy + 12);
+    // "/100" — moved to cy+38 so there's a clear ~12px gap below the score number
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.font = '11px system-ui,sans-serif';
-    ctx.fillText('/ 100', cx, cy + 30);
+    ctx.fillText('/ 100', cx, cy + 38);
+    // Grade letter — baseline at cy+86 so cap top ≈ cy+64, well below circle bottom (cy+58)
     ctx.fillStyle = grade.color;
-    ctx.font = 'bold 30px system-ui,sans-serif';
-    ctx.fillText(grade.grade, cx, cy + 70);
+    ctx.font = 'bold 28px system-ui,sans-serif';
+    ctx.fillText(grade.grade, cx, cy + 86);
+    // Grade label
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.font = '11px system-ui,sans-serif';
-    ctx.fillText(grade.label.toUpperCase(), cx, cy + 86);
+    ctx.fillText(grade.label.toUpperCase(), cx, cy + 102);
 
     // Divider
     ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
@@ -1366,28 +1370,30 @@ export default function App() {
             >
               ↓ PNG
             </button>
-            <div className="health-score-section">
-              <div className="health-score-circle" style={{ borderColor: grade.color }}>
-                <span className="health-score-number" style={{ color: grade.color }}>{healthScore.overall}</span>
-                <span className="health-score-sub">/ 100</span>
-              </div>
-              <div>
-                <div className="health-grade" style={{ color: grade.color }}>{grade.grade}</div>
-                <div className="health-grade-label">{grade.label}</div>
-              </div>
-            </div>
-            <div className="health-divider" />
-            <div className="health-factors">
-              {healthScore.factors.map(f => (
-                <div key={f.key} className="health-factor">
-                  <div className="health-factor-label">{f.label}</div>
-                  <div className="health-factor-value" style={{ color: factorColor(f.score) }}>{f.value}</div>
-                  <div className="health-factor-bar">
-                    <div style={{ width: `${f.score}%`, background: factorColor(f.score) }} />
-                  </div>
-                  <div className="health-factor-status" style={{ color: factorColor(f.score) }}>{factorStatus(f.score)}</div>
+            <div className="health-inner">
+              <div className="health-score-section">
+                <div className="health-score-circle" style={{ borderColor: grade.color }}>
+                  <span className="health-score-number" style={{ color: grade.color }}>{healthScore.overall}</span>
+                  <span className="health-score-sub">/ 100</span>
                 </div>
-              ))}
+                <div>
+                  <div className="health-grade" style={{ color: grade.color }}>{grade.grade}</div>
+                  <div className="health-grade-label">{grade.label}</div>
+                </div>
+              </div>
+              <div className="health-divider" />
+              <div className="health-factors">
+                {healthScore.factors.map(f => (
+                  <div key={f.key} className="health-factor">
+                    <div className="health-factor-label">{f.label}</div>
+                    <div className="health-factor-value" style={{ color: factorColor(f.score) }}>{f.value}</div>
+                    <div className="health-factor-bar">
+                      <div style={{ width: `${f.score}%`, background: factorColor(f.score) }} />
+                    </div>
+                    <div className="health-factor-status" style={{ color: factorColor(f.score) }}>{factorStatus(f.score)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         );
