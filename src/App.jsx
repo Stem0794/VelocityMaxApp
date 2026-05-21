@@ -151,6 +151,9 @@ export default function App() {
   const [dateFrom, setDateFrom] = useState(() => sessionStorage.getItem('vmDateFrom') || '');
   const [dateTo, setDateTo] = useState(() => sessionStorage.getItem('vmDateTo') || '');
   const [selectedCycle, setSelectedCycle] = useState('');
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(
+    () => localStorage.getItem('vmAutoRefresh') || 'off'
+  );
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -267,6 +270,16 @@ export default function App() {
     sessionStorage.setItem('vmDateFrom', dateFrom);
     sessionStorage.setItem('vmDateTo', dateTo);
   }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (autoRefreshInterval === 'off') return;
+    const ms = { '5m': 300000, '15m': 900000, '30m': 1800000 }[autoRefreshInterval];
+    if (!ms) return;
+    const id = setInterval(() => {
+      if (activePreset) loadPresetData(activePreset, apiKey);
+    }, ms);
+    return () => clearInterval(id);
+  }, [autoRefreshInterval]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectPreset = (presetId) => {
     setActivePresetId(presetId);
@@ -491,6 +504,43 @@ export default function App() {
     return { overall, factors };
   }, [velocityData, flowEfficiency, leadTimeHistogram, filteredIssues]);
 
+  const cycleComparison = useMemo(() => {
+    if (!data?.issues || uniqueCycles.length < 2) return [];
+    return uniqueCycles.slice(0, 8).map(c => {
+      const issues = data.issues.filter(i => String(i.cycleNumber) === String(c.number));
+      const completed = issues.filter(i => i.completedAt);
+      const withCT = completed.filter(i => i.cycleTimeDays != null);
+      const avgCT = withCT.length
+        ? Math.round(withCT.reduce((s, i) => s + i.cycleTimeDays, 0) / withCT.length * 10) / 10
+        : 0;
+      return {
+        label: `C${c.number}${c.number === currentCycleNumber ? ' ▶' : ''}`,
+        points: completed.reduce((s, i) => s + (i.points || 0), 0),
+        tickets: completed.length,
+        avgCycleTime: avgCT,
+        completionPct: issues.length ? Math.round(completed.length / issues.length * 100) : 0,
+      };
+    }).reverse();
+  }, [data, uniqueCycles, currentCycleNumber]);
+
+  const applyQuickRange = (range) => {
+    const today = new Date();
+    const fmt = d => d.toISOString().split('T')[0];
+    if (range === '30d') {
+      const f = new Date(today); f.setDate(f.getDate() - 30);
+      setDateFrom(fmt(f)); setDateTo(fmt(today));
+    } else if (range === '90d') {
+      const f = new Date(today); f.setDate(f.getDate() - 90);
+      setDateFrom(fmt(f)); setDateTo(fmt(today));
+    } else if (range === 'quarter') {
+      const q = Math.floor(today.getMonth() / 3);
+      setDateFrom(fmt(new Date(today.getFullYear(), q * 3, 1)));
+      setDateTo(fmt(today));
+    } else {
+      setDateFrom(''); setDateTo('');
+    }
+  };
+
   const toggleStatus = (status) => {
     setSelectedStatuses(prev =>
       prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
@@ -611,6 +661,111 @@ export default function App() {
     ? (cycleTimeData.reduce((s, i) => s + i.cycleTime, 0) / cycleTimeData.length).toFixed(1)
     : '—';
 
+  const exportSnapshot = () => {
+    if (!healthScore) return;
+    const W = 1200, H = 380;
+    const canvas = document.createElement('canvas');
+    canvas.width = W * 2; canvas.height = H * 2;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2, 2);
+
+    const grade = getHealthGrade(healthScore.overall);
+
+    const rr = (x, y, w, h, r) => {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
+      ctx.arcTo(x + w, y, x + w, y + r, r); ctx.lineTo(x + w, y + h - r);
+      ctx.arcTo(x + w, y + h, x + w - r, y + h, r); ctx.lineTo(x + r, y + h);
+      ctx.arcTo(x, y + h, x, y + h - r, r); ctx.lineTo(x, y + r);
+      ctx.arcTo(x, y, x + r, y, r); ctx.closePath();
+    };
+
+    // Background
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, W, H);
+
+    // Header strip
+    ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fillRect(0, 0, W, 50);
+    ctx.fillStyle = '#a5b4fc';
+    ctx.font = 'bold 17px system-ui,sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('VelocityMAX', 32, 31);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '13px system-ui,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText([activePreset?.name, data?.team].filter(Boolean).join(' · '), W / 2, 31);
+    ctx.textAlign = 'right';
+    ctx.fillText(new Date().toLocaleDateString(), W - 32, 31);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, 50); ctx.lineTo(W, 50); ctx.stroke();
+
+    const TOP = 68;
+
+    // Score circle
+    const cx = 118, cy = TOP + 86;
+    ctx.strokeStyle = grade.color; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(cx, cy, 58, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = grade.color;
+    ctx.font = 'bold 42px system-ui,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(String(healthScore.overall), cx, cy + 15);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '11px system-ui,sans-serif';
+    ctx.fillText('/ 100', cx, cy + 30);
+    ctx.fillStyle = grade.color;
+    ctx.font = 'bold 30px system-ui,sans-serif';
+    ctx.fillText(grade.grade, cx, cy + 70);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = '11px system-ui,sans-serif';
+    ctx.fillText(grade.label.toUpperCase(), cx, cy + 86);
+
+    // Divider
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(212, TOP); ctx.lineTo(212, H - 28); ctx.stroke();
+
+    // KPI tiles (2×2)
+    const kpis = [
+      { label: 'Total Issues', value: String(totalIssues) },
+      { label: 'Completed', value: String(completedIssues) },
+      { label: 'Story Points', value: String(totalPoints) },
+      { label: 'Avg Cycle Time', value: avgCycleTime !== '—' ? `${avgCycleTime}d` : '—' },
+    ];
+    const kW = 188, kH = 74, kGap = 10, kX = 228;
+    kpis.forEach((kpi, i) => {
+      const x = kX + (i % 2) * (kW + kGap), y = TOP + Math.floor(i / 2) * (kH + kGap);
+      rr(x, y, kW, kH, 8);
+      ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 28px system-ui,sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(kpi.value, x + kW / 2, y + 38);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '10px system-ui,sans-serif';
+      ctx.fillText(kpi.label.toUpperCase(), x + kW / 2, y + 58);
+    });
+
+    // Divider 2
+    const d2 = kX + 2 * (kW + kGap) + 14;
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(d2, TOP); ctx.lineTo(d2, H - 28); ctx.stroke();
+
+    // Health factors
+    const fX = d2 + 22, fW = W - fX - 32;
+    healthScore.factors.forEach((f, i) => {
+      const y = TOP + i * 56;
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '10px system-ui,sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(f.label.toUpperCase(), fX, y + 12);
+      ctx.fillStyle = factorColor(f.score); ctx.font = 'bold 15px system-ui,sans-serif';
+      ctx.fillText(f.value, fX, y + 30);
+      rr(fX, y + 36, fW, 3, 2); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill();
+      rr(fX, y + 36, Math.max(4, fW * f.score / 100), 3, 2);
+      ctx.fillStyle = factorColor(f.score); ctx.fill();
+    });
+
+    // Footer
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.font = '10px system-ui,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Generated by VelocityMAX · ' + new Date().toLocaleString(), W / 2, H - 10);
+
+    const a = document.createElement('a');
+    a.download = `velocitymax-${new Date().toISOString().split('T')[0]}.png`;
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  };
+
   return (
     <>
       {showSettings && (
@@ -696,6 +851,15 @@ export default function App() {
             </div>
           )}
           <div className="filter-group">
+            <label>Date Range</label>
+            <div className="quick-range-btns">
+              <button className="quick-range-btn" onClick={() => applyQuickRange('30d')}>30d</button>
+              <button className="quick-range-btn" onClick={() => applyQuickRange('90d')}>90d</button>
+              <button className="quick-range-btn" onClick={() => applyQuickRange('quarter')}>Quarter</button>
+              <button className="quick-range-btn" onClick={() => applyQuickRange('all')}>All</button>
+            </div>
+          </div>
+          <div className="filter-group">
             <label htmlFor="filter-from">From</label>
             <input id="filter-from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
           </div>
@@ -704,7 +868,19 @@ export default function App() {
             <input id="filter-to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
           </div>
           <div className="filter-group">
-            <button className="btn-secondary" onClick={resetFilters}>Reset Filters</button>
+            <label htmlFor="auto-refresh">Auto-refresh</label>
+            <select id="auto-refresh" value={autoRefreshInterval} onChange={e => {
+              setAutoRefreshInterval(e.target.value);
+              localStorage.setItem('vmAutoRefresh', e.target.value);
+            }}>
+              <option value="off">Off</option>
+              <option value="5m">5 min</option>
+              <option value="15m">15 min</option>
+              <option value="30m">30 min</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            <button className="btn-secondary" onClick={resetFilters}>Reset</button>
           </div>
           {activePreset && (
             <div className="filter-group">
@@ -794,6 +970,13 @@ export default function App() {
         const grade = getHealthGrade(healthScore.overall);
         return (
           <div className="glass-card health-card">
+            <button
+              className="health-export-btn"
+              onClick={exportSnapshot}
+              title="Export as PNG"
+            >
+              ↓ PNG
+            </button>
             <div className="health-score-section">
               <div className="health-score-circle" style={{ borderColor: grade.color }}>
                 <span className="health-score-number" style={{ color: grade.color }}>{healthScore.overall}</span>
@@ -848,6 +1031,32 @@ export default function App() {
             </ResponsiveContainer>
           </div>
         </div>
+
+        {/* Cycle-over-cycle comparison */}
+        {cycleComparison.length >= 2 && (
+          <div className="glass-card">
+            <div className="chart-title">Cycle Comparison</div>
+            <div className="chart-description">
+              Last {cycleComparison.length} cycles side by side — points delivered (bars, left axis) and completion rate % (line, right axis).
+              <em> ▶ marks the current active cycle.</em>
+            </div>
+            <div className="chart-wrapper">
+              <ResponsiveContainer width="100%" height={350}>
+                <ComposedChart data={cycleComparison} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+                  <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
+                  <YAxis yAxisId="left" stroke="var(--text-secondary)" fontSize={12} />
+                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="var(--text-secondary)" fontSize={12} tickFormatter={v => `${v}%`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend />
+                  <Bar yAxisId="left" dataKey="points" name="Points" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="tickets" name="Tickets" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="completionPct" name="Completion %" stroke="var(--chart-green)" strokeWidth={2} dot={{ r: 4 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
 
         {/* Issue Cycle Times */}
         <div className="glass-card">
