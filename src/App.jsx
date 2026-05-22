@@ -1383,13 +1383,6 @@ export default function App() {
         const grade = getHealthGrade(healthScore.overall);
         return (
           <div className="glass-card health-card">
-            <button
-              className="health-export-btn"
-              onClick={exportSnapshot}
-              title="Export as PNG"
-            >
-              ↓ PNG
-            </button>
             <div className="health-inner">
               <div className="health-score-section">
                 <div className="health-score-circle" style={{ borderColor: grade.color }}>
@@ -1414,6 +1407,13 @@ export default function App() {
                   </div>
                 ))}
               </div>
+              <button
+                className="health-export-btn"
+                onClick={exportSnapshot}
+                title="Export as PNG"
+              >
+                ↓ PNG
+              </button>
             </div>
           </div>
         );

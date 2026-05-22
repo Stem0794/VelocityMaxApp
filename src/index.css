@@ -83,7 +83,6 @@ body {
 
 /* Health Score */
 .health-card {
-  position: relative;
   padding: 1.25rem 1.75rem;
   margin-bottom: 2rem;
 }
@@ -93,7 +92,6 @@ body {
   align-items: center;
   gap: 2rem;
   flex-wrap: wrap;
-  padding-right: 3.5rem;
 }
 
 .health-score-section {
@@ -197,9 +195,9 @@ body {
 }
 
 .health-export-btn {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
+  margin-left: auto;
+  align-self: flex-start;
+  flex-shrink: 0;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -1190,9 +1188,9 @@ button:active {
 
   /* Button moves below the score/factors via order */
   .health-export-btn {
-    position: static;
     order: 1;
     width: 100%;
+    margin-left: 0;
   }
 
   /* Score + divider + factors stack as a column */
