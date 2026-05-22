@@ -93,6 +93,7 @@ body {
   align-items: center;
   gap: 2rem;
   flex-wrap: wrap;
+  padding-right: 3.5rem;
 }
 
 .health-score-section {
