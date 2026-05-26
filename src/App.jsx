@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ComposedChart, LineChart, Line, BarChart, Bar, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
@@ -37,16 +37,7 @@ const DEFAULT_PRESETS = [
   { id: 'demo', name: 'Demo', teamId: '', projectIds: [], everhourProjectIds: [] },
 ];
 
-// SHA-256 hash the entered password and compare to the stored hash.
-// The plaintext password is never stored anywhere — only the hash is
-// embedded in the bundle via the VITE_APP_PASSWORD_HASH build secret.
-async function verifyPassword(input) {
-  const stored = import.meta.env.VITE_APP_PASSWORD_HASH;
-  if (!stored) return null; // not configured
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
-  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-  return hex === stored.toLowerCase();
-}
+const GOOGLE_CLIENT_ID = '971045009454-n3krt7kq2ku7fg43he23elm9kg5vvq0v.apps.googleusercontent.com';
 
 function loadFromStorage(key, fallback) {
   try {
@@ -115,12 +106,10 @@ const DEFAULT_CHART_ORDER = [
 
 export default function App() {
   // ─── Auth ───
-  const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(
     () => sessionStorage.getItem('vmAuthed') === '1'
   );
   const [authError, setAuthError] = useState('');
-  const [authChecking, setAuthChecking] = useState(false);
 
   // ─── Settings ───
   const [showSettings, setShowSettings] = useState(false);
@@ -173,41 +162,36 @@ export default function App() {
   const [dragOverId, setDragOverId] = useState(null);
   const dragItem = useRef(null);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setAuthChecking(true);
-    setAuthError('');
-
-    // Demo shortcut — always works, forces the Demo preset with mock data
-    if (password === 'velocity') {
-      setActivePresetId('demo');
-      localStorage.setItem('vmActivePreset', 'demo');
-      sessionStorage.setItem('vmAuthed', '1');
-      setIsAuthenticated(true);
-      return;
-    }
-
-    // Artificial delay — slows down any brute-force attempt
-    await new Promise(r => setTimeout(r, 600));
-    const result = await verifyPassword(password);
-    if (result === null) {
-      // Not configured — allow through in dev, block in prod
-      if (import.meta.env.DEV) {
-        sessionStorage.setItem('vmAuthed', '1');
-        setIsAuthenticated(true);
-      } else {
-        setAuthError('No password configured. Set VITE_APP_PASSWORD_HASH in GitHub Secrets.');
-        setAuthChecking(false);
+  const handleGoogleCredential = useCallback((response) => {
+    try {
+      const b64 = response.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(b64 + '='.repeat((4 - b64.length % 4) % 4)));
+      const allowed = import.meta.env.VITE_ALLOWED_EMAILS;
+      if (allowed) {
+        const list = allowed.split(',').map(e => e.trim().toLowerCase());
+        if (!list.includes(payload.email.toLowerCase())) {
+          setAuthError(`Access denied: ${payload.email} is not authorised.`);
+          return;
+        }
       }
-      return;
-    }
-    if (result) {
       sessionStorage.setItem('vmAuthed', '1');
       setIsAuthenticated(true);
-    } else {
-      setAuthError('Incorrect password.');
-      setAuthChecking(false);
+    } catch {
+      setAuthError('Authentication failed — please try again.');
     }
+  }, []);
+
+  const handleDemoLogin = () => {
+    setActivePresetId('demo');
+    localStorage.setItem('vmActivePreset', 'demo');
+    sessionStorage.setItem('vmAuthed', '1');
+    setIsAuthenticated(true);
+  };
+
+  const handleSignOut = () => {
+    sessionStorage.removeItem('vmAuthed');
+    setIsAuthenticated(false);
+    if (window.google?.accounts?.id) window.google.accounts.id.disableAutoSelect();
   };
 
   const loadPresetData = async (preset, key) => {
@@ -285,6 +269,29 @@ export default function App() {
       if (fetchSeq.current === seq) setLoadingHistory(false);
     }
   };
+
+  useEffect(() => {
+    if (isAuthenticated) return;
+    const initGSI = () => {
+      const btnEl = document.getElementById('google-signin-btn');
+      if (!window.google?.accounts?.id || !btnEl) return;
+      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
+      window.google.accounts.id.renderButton(btnEl, {
+        theme: 'filled_black', size: 'large', text: 'signin_with', shape: 'rectangular', width: 280,
+      });
+    };
+    if (window.google?.accounts) {
+      initGSI();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = initGSI;
+      document.head.appendChild(script);
+      return () => { if (document.head.contains(script)) document.head.removeChild(script); };
+    }
+  }, [isAuthenticated, handleGoogleCredential]);
 
   useEffect(() => {
     if (isAuthenticated && activePreset) loadPresetData(activePreset, apiKey);
@@ -590,38 +597,23 @@ export default function App() {
       <div className="login-screen">
         <div className="glass-card login-card">
           <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>VelocityMAX</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-            Enter your password to access the dashboard
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.75rem' }}>
+            Sign in to access the dashboard
           </p>
-          <form onSubmit={handleLogin}>
-            <div className="input-group">
-              <input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoComplete="current-password"
-                autoFocus
-                disabled={authChecking}
-              />
-            </div>
-            {authError && (
-              <p style={{ color: 'var(--chart-red)', marginBottom: '1rem', fontSize: '0.875rem' }}>
-                {authError}
-              </p>
-            )}
-            <button type="submit" disabled={authChecking}>
-              {authChecking ? 'Checking…' : 'Sign In'}
-            </button>
-          </form>
-          <p style={{ marginTop: '1.25rem', fontSize: '0.75rem', color: 'var(--text-secondary)', opacity: 0.6 }}>
-            Use <code style={{ fontFamily: 'monospace', background: 'rgba(255,255,255,0.07)', padding: '0.1rem 0.35rem', borderRadius: 4 }}>velocity</code> to explore with demo data
-          </p>
-          {import.meta.env.DEV && (
-            <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              Dev mode — auth bypassed. Set VITE_APP_PASSWORD_HASH in .env.local to test.
+          <div id="google-signin-btn" style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
+          {authError && (
+            <p style={{ color: 'var(--chart-red)', margin: '0.75rem 0 0', fontSize: '0.875rem' }}>
+              {authError}
             </p>
           )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1.25rem 0 1rem' }}>
+            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)' }} />
+            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', opacity: 0.7 }}>or</span>
+            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)' }} />
+          </div>
+          <button className="btn-secondary" style={{ width: '100%' }} onClick={handleDemoLogin}>
+            Explore with demo data
+          </button>
         </div>
       </div>
     );
@@ -1219,6 +1211,14 @@ export default function App() {
             title="Settings"
           >
             ⚙
+          </button>
+          <button
+            className="btn-icon"
+            onClick={handleSignOut}
+            title="Sign out"
+            style={{ fontSize: '0.8rem' }}
+          >
+            ⏻
           </button>
         </div>
 
