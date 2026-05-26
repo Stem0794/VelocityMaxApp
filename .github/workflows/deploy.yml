@@ -45,7 +45,7 @@ jobs:
 
       - name: Build Vite App
         env:
-          VITE_APP_PASSWORD_HASH: ${{ secrets.VITE_APP_PASSWORD_HASH }}
+          VITE_ALLOWED_EMAILS: ${{ secrets.VITE_ALLOWED_EMAILS }}
         run: npm run build
 
       - name: Setup Pages
