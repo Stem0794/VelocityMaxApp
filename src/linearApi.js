@@ -194,20 +194,25 @@ export function processIssues(issues) {
 export function computeBurnupData(issues) {
   if (!issues.length) return [];
   const dailyMap = {};
+
+  const addPoints = (dateValue, field, points) => {
+    if (!dateValue) return;
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return;
+    const day = date.toISOString().split('T')[0];
+    if (!dailyMap[day]) dailyMap[day] = { created: 0, completed: 0 };
+    dailyMap[day][field] += points;
+  };
+
   issues.forEach(i => {
-    const cd = i.createdAt.split('T')[0];
-    dailyMap[cd] = dailyMap[cd] || { created: 0, completed: 0 };
-    dailyMap[cd].created += i.points || 0;
-    if (i.completedAt) {
-      const dd = i.completedAt.split('T')[0];
-      dailyMap[dd] = dailyMap[dd] || { created: 0, completed: 0 };
-      dailyMap[dd].completed += i.points || 0;
-    }
+    const points = Number(i.points) || 0;
+    addPoints(i.createdAt, 'created', points);
+    addPoints(i.completedAt, 'completed', points);
   });
   let cumCreated = 0, cumCompleted = 0;
   return Object.keys(dailyMap).sort().map(d => {
     cumCreated += dailyMap[d].created;
     cumCompleted += dailyMap[d].completed;
-    return { date: d, totalScope: cumCreated, cumulativeCompleted: cumCompleted };
+    return { date: d, cumulativeCreated: cumCreated, totalScope: cumCreated, cumulativeCompleted: cumCompleted };
   });
 }

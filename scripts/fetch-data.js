@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 try {
   const dotenv = await import('dotenv');
   dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
-} catch (e) {
+} catch {
   // dotenv not available or not needed in CI
 }
 
@@ -226,6 +226,8 @@ function processIssues(issues) {
       currentStatus: issue.state ? issue.state.name : '',
       currentStatusType: issue.state ? issue.state.type : '',
       cycleNumber: issue.cycle ? issue.cycle.number : '',
+      cycleStartsAt: issue.cycle ? issue.cycle.startsAt || '' : '',
+      cycleEndsAt: issue.cycle ? issue.cycle.endsAt || '' : '',
       createdAt: issue.createdAt || '',
       startedAt: issue.startedAt || '',
       completedAt: issue.completedAt || '',
@@ -252,15 +254,23 @@ function computeBurnupBurndownData(processedIssues) {
       let d = new Date(issue.completedAt);
       if (d > maxDate) maxDate = d;
     }
+    if (issue.canceledAt) {
+      let d = new Date(issue.canceledAt);
+      if (d > maxDate) maxDate = d;
+    }
+    if (issue.createdAt) {
+      let d = new Date(issue.createdAt);
+      if (d > maxDate) maxDate = d;
+    }
   });
 
   if (maxDate.getTime() === new Date(0).getTime()) maxDate = new Date();
   if (minDate > new Date()) minDate = new Date();
 
   const dailyData = {};
-  processedIssues.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const sortedIssues = [...processedIssues].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
-  processedIssues.forEach(issue => {
+  sortedIssues.forEach(issue => {
     const createdAt = new Date(issue.createdAt);
     const completedAt = issue.completedAt ? new Date(issue.completedAt) : null;
     const points = issue.points || 0;

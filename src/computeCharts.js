@@ -1,24 +1,56 @@
 // Pure computation functions for chart data — no React dependencies.
 
 function getISOWeekLabel(dateStr) {
-  const d = new Date(dateStr);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const input = new Date(dateStr);
+  const d = new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  return d.getFullYear() + '-W' + (weekNo < 10 ? '0' : '') + weekNo;
+  return d.getUTCFullYear() + '-W' + (weekNo < 10 ? '0' : '') + weekNo;
+}
+
+function getISOWeekStart(dateStr) {
+  const input = new Date(dateStr);
+  const d = new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() - day + 1);
+  return d;
 }
 
 /**
  * Same as the velocityData useMemo in App.jsx but adds `rollingAvgCount`
  * (rolling 4-week average of ticket count) to each week object.
  */
-export function computeVelocityWithTrend(filteredIssues) {
-  const completed = filteredIssues.filter(i => i.completedAt);
+export function computeVelocityWithTrend(filteredIssues, asOfDate) {
+  const completed = filteredIssues.filter(i =>
+    i.completedAt && !Number.isNaN(new Date(i.completedAt).getTime())
+  );
+  if (!completed.length) return [];
+
+  const latestCompleted = completed.reduce((latest, issue) =>
+    new Date(issue.completedAt) > latest ? new Date(issue.completedAt) : latest,
+    new Date(0)
+  );
+  const requestedEnd = asOfDate ? new Date(asOfDate) : latestCompleted;
+  const endDate = Number.isNaN(requestedEnd.getTime()) ? latestCompleted : requestedEnd;
+  const earliestCompleted = completed.reduce((earliest, issue) =>
+    new Date(issue.completedAt) < earliest ? new Date(issue.completedAt) : earliest,
+    new Date(completed[0].completedAt)
+  );
+  const effectiveEndDate = endDate < latestCompleted ? latestCompleted : endDate;
+  const cursor = getISOWeekStart(earliestCompleted);
+  const endWeek = getISOWeekStart(effectiveEndDate);
   const weekMap = {};
+
+  while (cursor <= endWeek) {
+    const week = getISOWeekLabel(cursor);
+    weekMap[week] = { week, points: 0, count: 0 };
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+
   completed.forEach(p => {
     const week = getISOWeekLabel(p.completedAt);
-    if (!weekMap[week]) weekMap[week] = { week, points: 0, count: 0 };
     weekMap[week].points += p.points || 0;
     weekMap[week].count += 1;
   });
@@ -63,13 +95,26 @@ export function computeSprintBurndown(allIssues, cycleNumber) {
   const sprintIssues = allIssues.filter(i => String(i.cycleNumber) === String(cycleNumber));
   if (!sprintIssues.length) return [];
 
-  // Determine sprint window from cycleStartsAt / cycleEndsAt on issues
-  const starts = sprintIssues.map(i => i.cycleStartsAt).filter(Boolean);
-  const ends = sprintIssues.map(i => i.cycleEndsAt).filter(Boolean);
-  if (!starts.length || !ends.length) return [];
+  // Determine the sprint window from cycle metadata. Older cached snapshots may
+  // lack that metadata, so fall back to the observed issue lifetime instead of
+  // silently hiding the chart.
+  const toValidTime = value => {
+    const time = value ? new Date(value).getTime() : NaN;
+    return Number.isNaN(time) ? null : time;
+  };
+  const starts = sprintIssues.map(i => toValidTime(i.cycleStartsAt)).filter(Boolean);
+  const ends = sprintIssues.map(i => toValidTime(i.cycleEndsAt)).filter(Boolean);
+  const observed = sprintIssues.flatMap(i => [i.createdAt, i.startedAt, i.completedAt, i.canceledAt])
+    .map(toValidTime)
+    .filter(Boolean);
+  if (!observed.length && (!starts.length || !ends.length)) return [];
 
-  const sprintStart = new Date(starts.reduce((a, b) => a < b ? a : b));
-  const sprintEnd = new Date(ends.reduce((a, b) => a > b ? a : b));
+  const startTime = starts.length ? Math.min(...starts) : Math.min(...observed);
+  const endTime = ends.length ? Math.max(...ends) : Math.max(...observed);
+  const start = new Date(startTime);
+  const end = new Date(Math.max(startTime, endTime));
+  const sprintStart = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const sprintEnd = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
 
   const totalPoints = sprintIssues.reduce((s, i) => s + (i.points || 0), 0);
   if (totalPoints === 0) return [];
@@ -80,13 +125,16 @@ export function computeSprintBurndown(allIssues, cycleNumber) {
 
   for (let d = 0; d < days; d++) {
     const date = new Date(sprintStart.getTime() + d * msPerDay);
+    const dayEnd = new Date(date.getTime() + msPerDay - 1);
     const dateStr = date.toISOString().split('T')[0];
     const completedByDay = sprintIssues.reduce((s, i) => {
-      if (i.completedAt && new Date(i.completedAt) <= date) return s + (i.points || 0);
+      if (i.completedAt && new Date(i.completedAt) <= dayEnd) return s + (i.points || 0);
       return s;
     }, 0);
     const remaining = Math.max(0, totalPoints - completedByDay);
-    const ideal = Math.round(totalPoints * (1 - d / (days - 1)) * 10) / 10;
+    const ideal = days > 1
+      ? Math.round(totalPoints * (1 - d / (days - 1)) * 10) / 10
+      : 0;
     result.push({ date: dateStr, remaining, ideal });
   }
 
@@ -97,12 +145,13 @@ export function computeSprintBurndown(allIssues, cycleNumber) {
  * Weekly sample of issues in each simplified phase.
  * Returns array of { date, Backlog, 'In Progress', Done, Cancelled }.
  */
-export function computeCumulativeFlow(filteredIssues) {
+export function computeCumulativeFlow(filteredIssues, asOfDate) {
   if (!filteredIssues.length) return [];
 
   const dates = filteredIssues.map(i => new Date(i.createdAt));
   const minDate = new Date(Math.min(...dates));
-  const maxDate = new Date();
+  const requestedEnd = asOfDate ? new Date(asOfDate) : new Date();
+  const maxDate = Number.isNaN(requestedEnd.getTime()) ? new Date() : requestedEnd;
 
   // Snap to Monday of that week
   const startDate = new Date(minDate);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { fetchTeams, fetchProjects } from './linearApi';
 import { fetchEverhourProjects } from './everhourApi';
 

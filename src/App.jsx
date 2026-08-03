@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ComposedChart, LineChart, Line, BarChart, Bar, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
@@ -401,7 +401,10 @@ export default function App() {
   }, [data, selectedProject, selectedAssignee, selectedCurrentStatuses, dateFrom, dateTo]);
 
   // ─── Chart data ───
-  const velocityData = useMemo(() => computeVelocityWithTrend(filteredIssues), [filteredIssues]);
+  const velocityData = useMemo(
+    () => computeVelocityWithTrend(filteredIssues, data?.lastUpdated),
+    [filteredIssues, data?.lastUpdated]
+  );
 
   const cycleTimeData = useMemo(() => {
     return filteredIssues
@@ -430,62 +433,47 @@ export default function App() {
     });
   }, [filteredIssues, selectedStatuses, allStatuses]);
 
-  const burnupData = useMemo(() => {
-    if (!data?.burnupData) return [];
-    if (selectedProject !== 'All' || selectedAssignee !== 'All' || selectedCurrentStatuses.length > 0 || dateFrom || dateTo) {
-      const sorted = [...filteredIssues].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-      if (!sorted.length) return [];
-      const dailyMap = {};
-      sorted.forEach(issue => {
-        const cd = new Date(issue.createdAt).toISOString().split('T')[0];
-        if (!dailyMap[cd]) dailyMap[cd] = { created: 0, completed: 0 };
-        dailyMap[cd].created += issue.points || 0;
-        if (issue.completedAt) {
-          const dd = new Date(issue.completedAt).toISOString().split('T')[0];
-          if (!dailyMap[dd]) dailyMap[dd] = { created: 0, completed: 0 };
-          dailyMap[dd].completed += issue.points || 0;
-        }
-      });
-      let cumCreated = 0, cumCompleted = 0;
-      return Object.keys(dailyMap).sort().map(d => {
-        cumCreated += dailyMap[d].created;
-        cumCompleted += dailyMap[d].completed;
-        return { date: d, totalScope: cumCreated, cumulativeCompleted: cumCompleted };
-      });
-    }
-    return data.burnupData;
-  }, [data, filteredIssues, selectedProject, selectedAssignee, selectedCurrentStatuses, dateFrom, dateTo]);
+  const burnupData = useMemo(() => computeBurnupData(filteredIssues), [filteredIssues]);
 
   const leadTimeHistogram = useMemo(() => computeLeadTimeHistogram(filteredIssues), [filteredIssues]);
 
   const uniqueCycles = useMemo(() => {
-    if (!data?.issues) return [];
+    if (!filteredIssues.length) return [];
     const cycleMap = {};
-    data.issues.forEach(i => {
+    filteredIssues.forEach(i => {
       if (!i.cycleNumber) return;
       if (!cycleMap[i.cycleNumber]) {
         cycleMap[i.cycleNumber] = { number: i.cycleNumber, startsAt: i.cycleStartsAt || '', endsAt: i.cycleEndsAt || '' };
       }
     });
     return Object.values(cycleMap).sort((a, b) => b.number - a.number);
-  }, [data]);
+  }, [filteredIssues]);
 
   const currentCycleNumber = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const active = uniqueCycles.find(c => c.startsAt && c.endsAt && c.startsAt <= today && today <= c.endsAt);
+    const today = new Date();
+    const active = uniqueCycles.find(c => {
+      if (!c.startsAt || !c.endsAt) return false;
+      const startsAt = new Date(c.startsAt);
+      const endsAt = new Date(c.endsAt);
+      return !Number.isNaN(startsAt.getTime()) && !Number.isNaN(endsAt.getTime())
+        && startsAt <= today && today <= endsAt;
+    });
     return active?.number ?? uniqueCycles[0]?.number ?? null;
   }, [uniqueCycles]);
 
   useEffect(() => {
     if (currentCycleNumber != null) setSelectedCycle(String(currentCycleNumber));
-  }, [currentCycleNumber]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentCycleNumber]);
 
   const sprintBurndownData = useMemo(
-    () => computeSprintBurndown(data?.issues || [], selectedCycle),
-    [data, selectedCycle]
+    () => computeSprintBurndown(filteredIssues, selectedCycle),
+    [filteredIssues, selectedCycle]
   );
 
-  const cumulativeFlowData = useMemo(() => computeCumulativeFlow(filteredIssues), [filteredIssues]);
+  const cumulativeFlowData = useMemo(
+    () => computeCumulativeFlow(filteredIssues, data?.lastUpdated),
+    [filteredIssues, data?.lastUpdated]
+  );
 
   const flowEfficiency = useMemo(() => computeFlowEfficiency(filteredIssues), [filteredIssues]);
 
@@ -540,9 +528,9 @@ export default function App() {
   }, [velocityData, flowEfficiency, leadTimeHistogram, filteredIssues]);
 
   const cycleComparison = useMemo(() => {
-    if (!data?.issues || uniqueCycles.length < 2) return [];
+    if (!filteredIssues.length || uniqueCycles.length < 2) return [];
     return uniqueCycles.slice(0, 8).map(c => {
-      const issues = data.issues.filter(i => String(i.cycleNumber) === String(c.number));
+      const issues = filteredIssues.filter(i => String(i.cycleNumber) === String(c.number));
       const completed = issues.filter(i => i.completedAt);
       const withCT = completed.filter(i => i.cycleTimeDays != null);
       const avgCT = withCT.length
@@ -556,7 +544,7 @@ export default function App() {
         completionPct: issues.length ? Math.round(completed.length / issues.length * 100) : 0,
       };
     }).reverse();
-  }, [data, uniqueCycles, currentCycleNumber]);
+  }, [filteredIssues, uniqueCycles, currentCycleNumber]);
 
   const applyQuickRange = (range) => {
     const today = new Date();
@@ -827,7 +815,6 @@ export default function App() {
   };
 
   const chartCardProps = (id, fullWidth = false) => ({
-    key: id,
     className: `glass-card${fullWidth ? ' chart-full-width' : ''}${dragOverId === id ? ' chart-drag-over' : ''}`,
     draggable: true,
     onDragStart: e => handleDragStart(e, id),
@@ -846,7 +833,7 @@ export default function App() {
     switch (id) {
 
       case 'velocity': return (
-        <div {...chartCardProps('velocity')}>
+        <div key="velocity" {...chartCardProps('velocity')}>
           <div className="chart-title-row"><div className="chart-title">Weekly Velocity</div><DragHandle /></div>
           <div className="chart-description">
             Points delivered (purple bars) and ticket count (red line) per ISO week.
@@ -874,7 +861,7 @@ export default function App() {
       case 'cycle-compare': {
         if (cycleComparison.length < 2) return null;
         return (
-          <div {...chartCardProps('cycle-compare')}>
+          <div key="cycle-compare" {...chartCardProps('cycle-compare')}>
             <div className="chart-title-row"><div className="chart-title">Cycle Comparison</div><DragHandle /></div>
             <div className="chart-description">
               Last {cycleComparison.length} cycles side by side — points delivered (bars, left axis) and completion rate % (line, right axis).
@@ -900,7 +887,7 @@ export default function App() {
       }
 
       case 'cycle-times': return (
-        <div {...chartCardProps('cycle-times')}>
+        <div key="cycle-times" {...chartCardProps('cycle-times')}>
           <div className="chart-title-row"><div className="chart-title">Issue Cycle Times</div><DragHandle /></div>
           <div className="chart-description">
             Each dot is one completed issue — horizontal axis is completion date, vertical axis is days in progress.
@@ -927,7 +914,7 @@ export default function App() {
       );
 
       case 'burnup': return (
-        <div {...chartCardProps('burnup')}>
+        <div key="burnup" {...chartCardProps('burnup')}>
           <div className="chart-title-row"><div className="chart-title">Burn-up Chart</div><DragHandle /></div>
           <div className="chart-description">
             Tracks total scope (red) and cumulative completed work (green) over the project's life.
@@ -953,7 +940,7 @@ export default function App() {
       case 'burndown': {
         if (!uniqueCycles.length) return null;
         return (
-          <div {...chartCardProps('burndown')}>
+          <div key="burndown" {...chartCardProps('burndown')}>
             <div className="chart-title-row"><div className="chart-title">Sprint Burndown</div><DragHandle /></div>
             <div className="chart-description">
               Remaining story points (purple) vs the ideal straight-line burndown (dashed) for a given sprint.
@@ -1003,7 +990,7 @@ export default function App() {
       }
 
       case 'lead-time': return (
-        <div {...chartCardProps('lead-time')}>
+        <div key="lead-time" {...chartCardProps('lead-time')}>
           <div className="chart-title-row"><div className="chart-title">Lead Time Distribution</div><DragHandle /></div>
           <div className="chart-description">
             Time from issue creation to completion, grouped into buckets.
@@ -1025,7 +1012,7 @@ export default function App() {
       );
 
       case 'flow-efficiency': return (
-        <div {...chartCardProps('flow-efficiency')}>
+        <div key="flow-efficiency" {...chartCardProps('flow-efficiency')}>
           <div className="chart-title-row"><div className="chart-title">Flow Efficiency</div><DragHandle /></div>
           <div className="chart-description">
             Ratio of active work time (cycle time) to total elapsed time (lead time).
@@ -1061,7 +1048,7 @@ export default function App() {
       );
 
       case 'status-breakdown': return (
-        <div {...chartCardProps('status-breakdown')}>
+        <div key="status-breakdown" {...chartCardProps('status-breakdown')}>
           <div className="chart-title-row"><div className="chart-title">Time Spent in Each Status</div><DragHandle /></div>
           <div className="chart-description">
             Average and median days issues spend in each workflow state. Click chips to show/hide states.
@@ -1100,7 +1087,7 @@ export default function App() {
       );
 
       case 'cfd': return (
-        <div {...chartCardProps('cfd', true)}>
+        <div key="cfd" {...chartCardProps('cfd', true)}>
           <div className="chart-title-row"><div className="chart-title">Cumulative Flow Diagram</div><DragHandle /></div>
           <div className="chart-description">
             Weekly snapshot of how many issues sit in each phase. A healthy team shows a steady rise in Done and a stable In Progress band.
@@ -1128,7 +1115,7 @@ export default function App() {
       case 'prediction': {
         if (!predictionResult) return null;
         return (
-          <div {...chartCardProps('prediction', true)}>
+          <div key="prediction" {...chartCardProps('prediction', true)}>
             <div className="chart-title-row"><div className="chart-title">Scope Prediction</div><DragHandle /></div>
             <div className="chart-description">
               The blue line shows actual remaining points to date. Dashed lines project when the backlog reaches zero based on the last 4 weeks of velocity.
@@ -1161,7 +1148,7 @@ export default function App() {
       }
 
       case 'issues': return (
-        <div {...chartCardProps('issues', true)}>
+        <div key="issues" {...chartCardProps('issues', true)}>
           <div className="chart-title-row"><div className="chart-title">Issues</div><DragHandle /></div>
           <IssuesTable issues={filteredIssues} />
         </div>

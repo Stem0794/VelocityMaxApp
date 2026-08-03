@@ -14,16 +14,15 @@
   "burnupData": [
     { "date": "2025-01-06T00:00:00Z", "cumulativeCreated": 11, "cumulativeCompleted": 0, "totalScope": 11 },
     { "date": "2025-01-09T00:00:00Z", "cumulativeCreated": 11, "cumulativeCompleted": 3, "totalScope": 11 },
-    { "date": "2025-01-13T00:00:00Z", "cumulativeCreated": 24, "cumulativeCompleted": 3, "totalScope": 24 },
-    { "date": "2025-01-15T00:00:00Z", "cumulativeCreated": 24, "cumulativeCompleted": 11, "totalScope": 24 },
-    { "date": "2025-01-17T00:00:00Z", "cumulativeCreated": 24, "cumulativeCompleted": 16, "totalScope": 24 },
-    { "date": "2025-01-20T00:00:00Z", "cumulativeCreated": 37, "cumulativeCompleted": 16, "totalScope": 37 },
-    { "date": "2025-01-22T00:00:00Z", "cumulativeCreated": 37, "cumulativeCompleted": 29, "totalScope": 37 },
-    { "date": "2025-01-27T00:00:00Z", "cumulativeCreated": 45, "cumulativeCompleted": 29, "totalScope": 45 },
-    { "date": "2025-01-29T00:00:00Z", "cumulativeCreated": 45, "cumulativeCompleted": 34, "totalScope": 45 },
-    { "date": "2025-01-30T00:00:00Z", "cumulativeCreated": 45, "cumulativeCompleted": 37, "totalScope": 45 },
-    { "date": "2025-02-03T00:00:00Z", "cumulativeCreated": 58, "cumulativeCompleted": 42, "totalScope": 58 },
-    { "date": "2025-02-05T00:00:00Z", "cumulativeCreated": 58, "cumulativeCompleted": 42, "totalScope": 58 }
+    { "date": "2025-01-13T00:00:00Z", "cumulativeCreated": 29, "cumulativeCompleted": 3, "totalScope": 29 },
+    { "date": "2025-01-15T00:00:00Z", "cumulativeCreated": 29, "cumulativeCompleted": 11, "totalScope": 29 },
+    { "date": "2025-01-17T00:00:00Z", "cumulativeCreated": 29, "cumulativeCompleted": 16, "totalScope": 29 },
+    { "date": "2025-01-20T00:00:00Z", "cumulativeCreated": 42, "cumulativeCompleted": 16, "totalScope": 42 },
+    { "date": "2025-01-22T00:00:00Z", "cumulativeCreated": 42, "cumulativeCompleted": 29, "totalScope": 42 },
+    { "date": "2025-01-27T00:00:00Z", "cumulativeCreated": 50, "cumulativeCompleted": 37, "totalScope": 50 },
+    { "date": "2025-01-29T00:00:00Z", "cumulativeCreated": 50, "cumulativeCompleted": 42, "totalScope": 50 },
+    { "date": "2025-01-30T00:00:00Z", "cumulativeCreated": 50, "cumulativeCompleted": 45, "totalScope": 50 },
+    { "date": "2025-02-03T00:00:00Z", "cumulativeCreated": 63, "cumulativeCompleted": 50, "totalScope": 63 }
   ],
   "lastUpdated": "2025-02-05T14:00:00Z",
   "team": "Engineering"
