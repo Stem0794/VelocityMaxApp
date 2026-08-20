@@ -30,7 +30,12 @@ export default function useDashboardData({ isAuthenticated, activePreset, apiKey
     if (!isAuthenticated || !activePreset) return;
     const preset = activePreset;
     const seq = ++fetchSeq.current;
-    const sourceSignature = JSON.stringify({ id: preset.id, teamId: preset.teamId || '', projectIds: preset.projectIds || [] });
+    const sourceSignature = JSON.stringify({
+      id: preset.id,
+      teamId: preset.teamId || '',
+      projectIds: preset.projectIds || [],
+      deliveryRules: preset.deliveryRules || {},
+    });
     const clear = forceClear || loadedPresetIdRef.current !== preset.id || loadedSourceRef.current !== sourceSignature || !dataRef.current;
     if (clear) {
       setLoading(true);
@@ -74,7 +79,7 @@ export default function useDashboardData({ isAuthenticated, activePreset, apiKey
         fetchWorkflowStates(apiKey, preset.teamId),
       ]);
       if (fetchSeq.current !== seq) return;
-      const processed = processIssues(rawIssues);
+      const processed = processIssues(rawIssues, preset.deliveryRules || {});
       const coreData = {
         issues: processed, burnupData: computeBurnupData(processed), workflowStates,
         lastUpdated: new Date().toISOString(), team: teamName,
@@ -90,9 +95,16 @@ export default function useDashboardData({ isAuthenticated, activePreset, apiKey
         if (fetchSeq.current === seq) setHistoryProgress({ done, total, failed });
       });
       if (fetchSeq.current !== seq) return;
-      const withHistory = { ...coreData, issues: processIssues(rawIssues) };
+      const historyProcessed = processIssues(rawIssues, preset.deliveryRules || {});
+      const withHistory = {
+        ...coreData,
+        issues: historyProcessed,
+        burnupData: computeBurnupData(historyProcessed),
+      };
       publishData(withHistory);
-      if (failures.length) setHistoryWarning(`${failures.length} issue histor${failures.length === 1 ? 'y' : 'ies'} could not be loaded. Time-in-status metrics are partial.`);
+      if (failures.length) {
+        setHistoryWarning(`${failures.length} issue histor${failures.length === 1 ? 'y' : 'ies'} could not be loaded. Time-in-status and configured delivery milestones may be partial.`);
+      }
     } catch (loadError) {
       if (fetchSeq.current === seq) setError(loadError.message || 'Could not load dashboard data.');
     } finally {
