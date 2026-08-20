@@ -1,7 +1,7 @@
 import { Download } from 'lucide-react';
 import { useState } from 'react';
 
-export function getHealthGrade(score) {
+function getHealthGrade(score) {
   if (score >= 85) return { grade: 'A', label: 'Excellent', tone: 'good' };
   if (score >= 70) return { grade: 'B', label: 'Good', tone: 'good' };
   if (score >= 55) return { grade: 'C', label: 'Fair', tone: 'warn' };
