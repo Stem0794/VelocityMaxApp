@@ -1,316 +1,304 @@
-import { useState, useEffect } from 'react';
-import { fetchTeams, fetchProjects } from './linearApi';
+import { CheckCircle2, Pencil, Plus, Trash2, X, XCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { fetchProjects, fetchTeams } from './linearApi';
 import { fetchEverhourProjects } from './everhourApi';
 
-function PresetForm({ preset, apiKey, everhourApiKey, onSave, onCancel }) {
+function PresetForm({ preset, linearKey, everhourKey, onSave, onCancel }) {
   const [name, setName] = useState(preset?.name || '');
   const [teamId, setTeamId] = useState(preset?.teamId || '');
   const [teamName, setTeamName] = useState(preset?.teamName || '');
   const [projectIds, setProjectIds] = useState(preset?.projectIds || []);
   const [everhourProjectIds, setEverhourProjectIds] = useState(preset?.everhourProjectIds || []);
-
   const [teams, setTeams] = useState([]);
   const [projects, setProjects] = useState([]);
   const [everhourProjects, setEverhourProjects] = useState([]);
-  const [loadingTeams, setLoadingTeams] = useState(false);
-  const [loadingProjects, setLoadingProjects] = useState(false);
-  const [loadingEverhour, setLoadingEverhour] = useState(false);
-  const [fetchError, setFetchError] = useState('');
+  const [loading, setLoading] = useState({ teams: false, projects: false, everhour: false });
+  const [error, setError] = useState('');
   const [projectSearch, setProjectSearch] = useState('');
   const [everhourSearch, setEverhourSearch] = useState('');
 
   useEffect(() => {
-    if (!apiKey) return;
-    setLoadingTeams(true);
-    setFetchError('');
-    fetchTeams(apiKey)
-      .then(setTeams)
-      .catch(err => setFetchError(err.message))
-      .finally(() => setLoadingTeams(false));
-  }, [apiKey]);
+    if (!linearKey) {
+      setTeams([]);
+      return undefined;
+    }
+    let alive = true;
+    setLoading(value => ({ ...value, teams: true }));
+    fetchTeams(linearKey)
+      .then(rows => { if (alive) setTeams(rows); })
+      .catch(err => { if (alive) setError(err.message); })
+      .finally(() => { if (alive) setLoading(value => ({ ...value, teams: false })); });
+    return () => { alive = false; };
+  }, [linearKey]);
 
   useEffect(() => {
-    if (!apiKey || !teamId) { setProjects([]); return; }
-    setLoadingProjects(true);
-    fetchProjects(apiKey, teamId)
-      .then(list => {
-        setProjects(list);
-        setProjectIds(prev => prev.filter(id => list.some(p => p.id === id)));
+    if (!linearKey || !teamId) {
+      setProjects([]);
+      return undefined;
+    }
+    let alive = true;
+    setLoading(value => ({ ...value, projects: true }));
+    fetchProjects(linearKey, teamId)
+      .then(rows => {
+        if (!alive) return;
+        setProjects(rows);
+        setProjectIds(previous => previous.filter(id => rows.some(project => project.id === id)));
       })
-      .catch(() => setProjects([]))
-      .finally(() => setLoadingProjects(false));
-  }, [apiKey, teamId]);
+      .catch(() => { if (alive) setProjects([]); })
+      .finally(() => { if (alive) setLoading(value => ({ ...value, projects: false })); });
+    return () => { alive = false; };
+  }, [linearKey, teamId]);
 
   useEffect(() => {
-    if (!everhourApiKey) return;
-    setLoadingEverhour(true);
-    fetchEverhourProjects(everhourApiKey)
-      .then(setEverhourProjects)
-      .catch(() => setEverhourProjects([]))
-      .finally(() => setLoadingEverhour(false));
-  }, [everhourApiKey]);
+    if (!everhourKey) {
+      setEverhourProjects([]);
+      return undefined;
+    }
+    let alive = true;
+    setLoading(value => ({ ...value, everhour: true }));
+    fetchEverhourProjects(everhourKey)
+      .then(rows => { if (alive) setEverhourProjects(rows); })
+      .catch(() => { if (alive) setEverhourProjects([]); })
+      .finally(() => { if (alive) setLoading(value => ({ ...value, everhour: false })); });
+    return () => { alive = false; };
+  }, [everhourKey]);
 
-  const handleTeamChange = (e) => {
-    const id = e.target.value;
-    setTeamId(id);
-    setTeamName(teams.find(t => t.id === id)?.name || '');
-    setProjectIds([]);
-  };
-
-  const toggleProject = (id) =>
-    setProjectIds(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
-
-  const toggleEverhourProject = (id) =>
-    setEverhourProjectIds(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
-
-  const handleSave = () => {
+  const save = () => {
     if (!name.trim()) return;
-    const selectedProjects = projects.filter(p => projectIds.includes(p.id));
-    const selectedEverhourProjects = everhourProjects.filter(p => everhourProjectIds.includes(String(p.id)));
     onSave({
-      id: preset?.id || Date.now().toString(),
+      ...preset,
+      id: preset?.id || `preset-${Date.now()}`,
       name: name.trim(),
       teamId,
       teamName,
       projectIds,
-      projectNames: selectedProjects.map(p => p.name),
+      projectNames: projects.filter(project => projectIds.includes(project.id)).map(project => project.name),
       everhourProjectIds,
-      everhourProjectNames: selectedEverhourProjects.map(p => p.name),
+      everhourProjectNames: everhourProjects.filter(project => everhourProjectIds.includes(String(project.id))).map(project => project.name),
     });
   };
 
   return (
-    <div className="preset-form">
-      <div className="preset-form-row">
-        <label>Preset name</label>
-        <input
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="e.g. TFS, Mobile, All"
-          autoFocus
-        />
-      </div>
-
-      <div className="preset-form-row">
-        <label>Team</label>
-        {!apiKey ? (
-          <p className="settings-hint" style={{ margin: 0 }}>Enter your Linear API key above to browse teams.</p>
-        ) : loadingTeams ? (
-          <p className="settings-hint" style={{ margin: 0 }}>Loading teams…</p>
-        ) : fetchError ? (
-          <p style={{ color: 'var(--chart-red)', fontSize: '0.8rem', margin: 0 }}>{fetchError}</p>
-        ) : teams.length > 0 ? (
-          <select className="preset-form-select" value={teamId} onChange={handleTeamChange}>
-            <option value="">— Select a team —</option>
-            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+    <div className="preset-form-v2">
+      {error ? <p className="inline-error" role="alert">{error}</p> : null}
+      <label>
+        Preset name
+        <input value={name} onChange={event => setName(event.target.value)} autoFocus placeholder="Mobile, Platform, All…" />
+      </label>
+      <label>
+        Team
+        {!linearKey ? <span className="settings-note">Test the Linear connection to browse teams.</span> : loading.teams ? <span className="settings-note">Loading teams…</span> : (
+          <select value={teamId} onChange={event => { const id = event.target.value; setTeamId(id); setTeamName(teams.find(team => team.id === id)?.name || ''); setProjectIds([]); }}>
+            <option value="">Demo data / no team</option>
+            {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
           </select>
-        ) : (
-          <p className="settings-hint" style={{ margin: 0 }}>No teams found for this API key.</p>
         )}
-      </div>
-
-      {teamId && (
-        <div className="preset-form-row">
-          <label>
-            Linear Projects
-            <span className="preset-form-label-note"> — leave all unchecked to include all</span>
-          </label>
-          {loadingProjects ? (
-            <p className="settings-hint" style={{ margin: 0 }}>Loading projects…</p>
-          ) : projects.length > 0 ? (
+      </label>
+      {teamId ? (
+        <div className="preset-project-group">
+          <div className="field-label">Linear projects <span>leave empty for all</span></div>
+          {loading.projects ? <span className="settings-note">Loading projects…</span> : (
             <>
-              <input
-                className="checklist-search"
-                placeholder="Search projects…"
-                value={projectSearch}
-                onChange={e => setProjectSearch(e.target.value)}
-              />
-              <div className="project-checklist">
-                {projects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase())).map(p => (
-                  <label key={p.id} className="project-check-item">
-                    <input type="checkbox" checked={projectIds.includes(p.id)} onChange={() => toggleProject(p.id)} />
-                    {p.name}
+              <input className="project-search" value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="Search projects" />
+              <div className="project-checklist-v2">
+                {projects.filter(project => project.name.toLowerCase().includes(projectSearch.toLowerCase())).map(project => (
+                  <label key={project.id}>
+                    <input type="checkbox" checked={projectIds.includes(project.id)} onChange={() => setProjectIds(previous => previous.includes(project.id) ? previous.filter(id => id !== project.id) : [...previous, project.id])} />
+                    {project.name}
                   </label>
                 ))}
               </div>
             </>
-          ) : (
-            <p className="settings-hint" style={{ margin: 0 }}>No projects found for this team.</p>
           )}
         </div>
-      )}
-
-      <div className="preset-form-row">
-        <label>
-          Everhour Projects
-          <span className="preset-form-label-note"> — for budget tracking</span>
-        </label>
-        {!everhourApiKey ? (
-          <p className="settings-hint" style={{ margin: 0 }}>Enter your Everhour API key above to browse projects.</p>
-        ) : loadingEverhour ? (
-          <p className="settings-hint" style={{ margin: 0 }}>Loading Everhour projects…</p>
-        ) : everhourProjects.length > 0 ? (
+      ) : null}
+      <div className="preset-project-group">
+        <div className="field-label">Everhour projects <span>optional budget tracking</span></div>
+        {!everhourKey ? <span className="settings-note">Test the Everhour connection to browse projects.</span> : loading.everhour ? <span className="settings-note">Loading Everhour projects…</span> : (
           <>
-            <input
-              className="checklist-search"
-              placeholder="Search projects…"
-              value={everhourSearch}
-              onChange={e => setEverhourSearch(e.target.value)}
-            />
-            <div className="project-checklist">
-              {everhourProjects.filter(p => p.name.toLowerCase().includes(everhourSearch.toLowerCase())).map(p => (
-                <label key={p.id} className="project-check-item">
-                  <input
-                    type="checkbox"
-                    checked={everhourProjectIds.includes(String(p.id))}
-                    onChange={() => toggleEverhourProject(String(p.id))}
-                  />
-                  {p.name}
-                </label>
-              ))}
+            <input className="project-search" value={everhourSearch} onChange={event => setEverhourSearch(event.target.value)} placeholder="Search Everhour projects" />
+            <div className="project-checklist-v2">
+              {everhourProjects.filter(project => (project.name || '').toLowerCase().includes(everhourSearch.toLowerCase())).map(project => {
+                const id = String(project.id);
+                return (
+                  <label key={id}>
+                    <input type="checkbox" checked={everhourProjectIds.includes(id)} onChange={() => setEverhourProjectIds(previous => previous.includes(id) ? previous.filter(item => item !== id) : [...previous, id])} />
+                    {project.name}
+                  </label>
+                );
+              })}
             </div>
           </>
-        ) : (
-          <p className="settings-hint" style={{ margin: 0 }}>No Everhour projects found.</p>
         )}
       </div>
-
-      <div className="preset-form-actions">
-        <button className="btn-secondary" onClick={onCancel} type="button">Cancel</button>
-        <button onClick={handleSave} type="button" disabled={!name.trim()}>Save Preset</button>
+      <div className="preset-form-actions-v2">
+        <button className="subtle-btn" type="button" onClick={onCancel}>Cancel</button>
+        <button type="button" onClick={save} disabled={!name.trim()}>Save preset</button>
       </div>
     </div>
   );
 }
 
-export default function SettingsModal({ apiKey, everhourApiKey, presets, onSave, onClose }) {
+function ConnectionStatus({ status }) {
+  if (!status) return null;
+  const ok = status.type === 'ok';
+  const pending = status.type === 'pending';
+  return (
+    <span className={`connection-status ${ok ? 'ok' : pending ? '' : 'bad'}`}>
+      {ok ? <CheckCircle2 size={14} aria-hidden="true" /> : pending ? null : <XCircle size={14} aria-hidden="true" />}
+      {status.message}
+    </span>
+  );
+}
+
+export default function SettingsModal({ apiKey, everhourApiKey, presets, onSave, onClose, initialAdd = false }) {
   const [localApiKey, setLocalApiKey] = useState(apiKey);
   const [localEverhourApiKey, setLocalEverhourApiKey] = useState(everhourApiKey);
   const [localPresets, setLocalPresets] = useState(presets);
   const [editingId, setEditingId] = useState(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(initialAdd);
+  const [linearStatus, setLinearStatus] = useState(apiKey ? { type: 'ok', message: 'Saved key' } : null);
+  const [everhourStatus, setEverhourStatus] = useState(everhourApiKey ? { type: 'ok', message: 'Saved key' } : null);
+  const [validatedLinearKey, setValidatedLinearKey] = useState(apiKey);
+  const [validatedEverhourKey, setValidatedEverhourKey] = useState(everhourApiKey);
+  const [deleteId, setDeleteId] = useState(null);
+  const dialogRef = useRef(null);
 
-  const handleSavePreset = (preset) => {
-    if (editingId) {
-      setLocalPresets(prev => prev.map(p => p.id === editingId ? preset : p));
-      setEditingId(null);
-    } else {
-      setLocalPresets(prev => [...prev, preset]);
-      setAdding(false);
+  useEffect(() => {
+    const previous = document.activeElement;
+    dialogRef.current?.focus();
+    const onKey = event => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'Tab' && dialogRef.current) {
+        const focusable = [...dialogRef.current.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      previous?.focus?.();
+    };
+  }, [onClose]);
+
+  const testLinear = async () => {
+    const key = localApiKey.trim();
+    if (!key) {
+      setLinearStatus({ type: 'bad', message: 'Enter a key first' });
+      return;
+    }
+    setLinearStatus({ type: 'pending', message: 'Testing…' });
+    try {
+      const teams = await fetchTeams(key);
+      setValidatedLinearKey(key);
+      setLinearStatus({ type: 'ok', message: `Connected · ${teams.length} team${teams.length === 1 ? '' : 's'}` });
+    } catch (error) {
+      setValidatedLinearKey('');
+      setLinearStatus({ type: 'bad', message: error.message });
     }
   };
 
-  const handleDelete = (id) => setLocalPresets(prev => prev.filter(p => p.id !== id));
-
-  const handleSave = () => {
-    onSave({ apiKey: localApiKey.trim(), everhourApiKey: localEverhourApiKey.trim(), presets: localPresets });
-    onClose();
+  const testEverhour = async () => {
+    const key = localEverhourApiKey.trim();
+    if (!key) {
+      setEverhourStatus({ type: 'bad', message: 'Enter a key first' });
+      return;
+    }
+    setEverhourStatus({ type: 'pending', message: 'Testing…' });
+    try {
+      const projects = await fetchEverhourProjects(key);
+      setValidatedEverhourKey(key);
+      setEverhourStatus({ type: 'ok', message: `Connected · ${projects.length} project${projects.length === 1 ? '' : 's'}` });
+    } catch (error) {
+      setValidatedEverhourKey('');
+      setEverhourStatus({ type: 'bad', message: error.message });
+    }
   };
 
+  const savePreset = preset => {
+    setLocalPresets(previous => editingId
+      ? previous.map(item => item.id === editingId ? preset : item)
+      : [...previous, preset]);
+    setEditingId(null);
+    setAdding(false);
+  };
+
+  const usableLinearKey = validatedLinearKey === localApiKey.trim() ? validatedLinearKey : '';
+  const usableEverhourKey = validatedEverhourKey === localEverhourApiKey.trim() ? validatedEverhourKey : '';
+
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-card">
-        <div className="modal-header">
-          <h2>Settings</h2>
-          <button className="btn-icon" onClick={onClose}>✕</button>
+    <div className="modal-overlay-v2" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="modal-card-v2" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabIndex={-1} ref={dialogRef}>
+        <div className="modal-header-v2">
+          <div><div className="section-eyebrow">Configuration</div><h2 id="settings-title">Settings</h2></div>
+          <button className="icon-action" type="button" onClick={onClose} aria-label="Close settings"><X size={18} aria-hidden="true" /></button>
         </div>
-
-        <div className="settings-section">
-          <label className="settings-label">Linear API Key</label>
-          <input
-            type="password"
-            className="settings-input"
-            value={localApiKey}
-            onChange={e => setLocalApiKey(e.target.value)}
-            placeholder="lin_api_xxxxxxxxxxxx"
-          />
-          <p className="settings-hint">
-            Stored in your browser only. Get it from Linear → Settings → API → Personal API keys.
-          </p>
+        <div className="settings-layout-v2">
+          <section className="settings-section-v2">
+            <h3>Connections</h3>
+            <p>Keys stay in this browser. Test explicitly before using them to browse teams or projects.</p>
+            <div className="connection-field">
+              <label>Linear API key<input type="password" value={localApiKey} onChange={event => { setLocalApiKey(event.target.value); setLinearStatus(null); if (event.target.value !== apiKey) setValidatedLinearKey(''); }} placeholder="lin_api_…" /></label>
+              <div className="connection-row"><ConnectionStatus status={linearStatus} /><button className="subtle-btn" type="button" onClick={testLinear}>Test connection</button></div>
+            </div>
+            <div className="connection-field">
+              <label>Everhour API key<input type="password" value={localEverhourApiKey} onChange={event => { setLocalEverhourApiKey(event.target.value); setEverhourStatus(null); if (event.target.value !== everhourApiKey) setValidatedEverhourKey(''); }} placeholder="Everhour API key" /></label>
+              <div className="connection-row"><ConnectionStatus status={everhourStatus} /><button className="subtle-btn" type="button" onClick={testEverhour}>Test connection</button></div>
+            </div>
+          </section>
+          <section className="settings-section-v2">
+            <div className="settings-section-heading">
+              <div><h3>Presets</h3><p>Saved combinations of Linear and Everhour projects.</p></div>
+              {!adding ? <button className="subtle-btn" type="button" onClick={() => setAdding(true)}><Plus size={14} aria-hidden="true" /> Add preset</button> : null}
+            </div>
+            <div className="preset-list-v2">
+              {localPresets.map(preset => (
+                <div key={preset.id} className="preset-item-v2">
+                  {editingId === preset.id ? (
+                    <PresetForm preset={preset} linearKey={usableLinearKey} everhourKey={usableEverhourKey} onSave={savePreset} onCancel={() => setEditingId(null)} />
+                  ) : (
+                    <>
+                      <div>
+                        <strong>{preset.name}</strong>
+                        <span>{preset.teamName || (preset.teamId ? 'Configured team' : 'Demo data')}{preset.projectNames?.length ? ` · ${preset.projectNames.join(', ')}` : preset.teamId ? ' · All projects' : ''}</span>
+                      </div>
+                      <div className="preset-item-actions-v2">
+                        <button className="icon-action" type="button" onClick={() => setEditingId(preset.id)} aria-label={`Edit ${preset.name}`}><Pencil size={15} aria-hidden="true" /></button>
+                        <button className="icon-action danger" type="button" onClick={() => setDeleteId(preset.id)} aria-label={`Delete ${preset.name}`}><Trash2 size={15} aria-hidden="true" /></button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+            {adding ? <PresetForm linearKey={usableLinearKey} everhourKey={usableEverhourKey} onSave={savePreset} onCancel={() => setAdding(false)} /> : null}
+          </section>
         </div>
-
-        <div className="settings-section">
-          <label className="settings-label">Everhour API Key</label>
-          <input
-            type="password"
-            className="settings-input"
-            value={localEverhourApiKey}
-            onChange={e => setLocalEverhourApiKey(e.target.value)}
-            placeholder="your-everhour-api-key"
-          />
-          <p className="settings-hint">
-            Stored in your browser only. Get it from Everhour → Settings → API.
-          </p>
+        <div className="modal-footer-v2">
+          <button className="subtle-btn" type="button" onClick={onClose}>Cancel</button>
+          <button type="button" onClick={() => { onSave({ apiKey: localApiKey.trim(), everhourApiKey: localEverhourApiKey.trim(), presets: localPresets }); onClose(); }}>Save settings</button>
         </div>
-
-        <div className="settings-section">
-          <label className="settings-label">Presets</label>
-          <p className="settings-hint" style={{ marginBottom: '0.75rem' }}>
-            Each preset is a saved view — a team, optional Linear projects, and optional Everhour projects for budget tracking.
-          </p>
-
-          <div className="preset-list">
-            {localPresets.map(p => (
-              <div key={p.id} className="preset-item">
-                {editingId === p.id ? (
-                  <PresetForm
-                    preset={p}
-                    apiKey={localApiKey}
-                    everhourApiKey={localEverhourApiKey}
-                    onSave={handleSavePreset}
-                    onCancel={() => setEditingId(null)}
-                  />
-                ) : (
-                  <div className="preset-item-row">
-                    <div className="preset-item-info">
-                      <span className="preset-item-name">{p.name}</span>
-                      <span className="preset-item-detail">
-                        {p.teamName || (p.teamId ? `Team ID: …${p.teamId.slice(-8)}` : 'No team — loads demo data')}
-                        {p.projectNames?.length > 0
-                          ? ` · ${p.projectNames.join(', ')}`
-                          : p.projectIds?.length > 0
-                            ? ` · ${p.projectIds.length} project(s)`
-                            : p.teamId ? ' · All projects' : ''}
-                        {p.everhourProjectNames?.length > 0
-                          ? ` · Everhour: ${p.everhourProjectNames.join(', ')}`
-                          : p.everhourProjectIds?.length > 0
-                            ? ` · ${p.everhourProjectIds.length} Everhour project(s)`
-                            : ''}
-                      </span>
-                    </div>
-                    <div className="preset-item-actions">
-                      <button className="btn-icon-sm" onClick={() => setEditingId(p.id)} title="Edit">✎</button>
-                      <button className="btn-icon-sm btn-danger" onClick={() => handleDelete(p.id)} title="Delete">✕</button>
-                    </div>
-                  </div>
-                )}
+        {deleteId ? (
+          <div className="confirm-overlay" role="alertdialog" aria-modal="true" aria-label="Confirm preset deletion">
+            <div className="confirm-card">
+              <h3>Delete preset?</h3>
+              <p>This removes the preset from this browser. It does not delete anything in Linear or Everhour.</p>
+              <div>
+                <button className="subtle-btn" type="button" onClick={() => setDeleteId(null)}>Cancel</button>
+                <button className="danger-btn" type="button" onClick={() => { setLocalPresets(previous => previous.filter(preset => preset.id !== deleteId)); setDeleteId(null); }}>Delete</button>
               </div>
-            ))}
+            </div>
           </div>
-
-          {adding ? (
-            <PresetForm
-              apiKey={localApiKey}
-              everhourApiKey={localEverhourApiKey}
-              onSave={handleSavePreset}
-              onCancel={() => setAdding(false)}
-            />
-          ) : (
-            <button
-              className="btn-secondary"
-              style={{ width: 'auto', marginTop: '0.75rem' }}
-              onClick={() => setAdding(true)}
-              type="button"
-            >
-              + Add Preset
-            </button>
-          )}
-        </div>
-
-        <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose} type="button">Cancel</button>
-          <button onClick={handleSave} type="button">Save Settings</button>
-        </div>
+        ) : null}
       </div>
     </div>
   );

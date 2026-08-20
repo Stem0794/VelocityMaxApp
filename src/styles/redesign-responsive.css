@@ -1,0 +1,27 @@
+@media (max-width: 1180px) {
+  .filter-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }.filter-field-range { grid-column: span 1; }
+  .health-card-v2 { grid-template-columns: auto 1fr; }.health-export { grid-column: 1 / -1; justify-self: end; }.health-factors-v2 { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
+}
+@media (max-width: 880px) {
+  .app-container-v2 { padding: 14px 16px 34px; }.dashboard-header { margin: -14px -2px 14px; padding-top: 12px; }
+  .action-label, .auto-refresh-control > span { display: none; }.action-btn { width: 36px; justify-content: center; padding: 0; }.auto-refresh-control select { width: 74px; }
+  .kpi-grid-v2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }.charts-grid-v2 { grid-template-columns: 1fr; }.chart-full-width { grid-column: auto; }
+  .filter-mobile-toggle { display: inline-flex; }.filter-controls { display: none; grid-template-columns: repeat(2, minmax(0,1fr)); }.filter-panel.expanded .filter-controls { display: grid; }.filter-field-range { grid-column: 1 / -1; }.quick-ranges button { flex: 1; }
+  .health-card-v2 { grid-template-columns: 1fr; }.health-factors-v2 { grid-template-columns: repeat(2, minmax(0,1fr)); }.health-export { grid-column: auto; justify-self: stretch; }.health-score-block { justify-content: flex-start; }
+  .budget-row-v2 { grid-template-columns: 1fr; gap: 7px; }
+}
+@media (max-width: 600px) {
+  .app-container-v2 { padding: 10px 10px 26px; }.dashboard-main-v2 { gap: 10px; }.dashboard-header { margin: -10px 0 10px; padding: 9px 0 0; }
+  .app-bar { align-items: flex-start; }.brand-mark { width: 34px; height: 34px; border-radius: 9px; }.brand-name { font-size: 15px; }.brand-context { display: block; font-size: 10px; }.sync-meta { display: block; margin-top: 1px; }.sync-meta::before { display: none; }
+  .auto-refresh-control { display: none; }.app-actions { gap: 4px; }.action-btn, .icon-action { width: 34px; height: 34px; min-height: 34px; }
+  .preset-nav-row { padding-top: 6px; }.preset-tab { min-height: 30px; padding: 5px 9px; font-size: 10.5px; }.preset-add-btn { min-height: 30px; font-size: 10.5px; }
+  .filter-panel { padding: 12px; }.filter-panel-heading { align-items: flex-start; }.filter-heading-actions { flex-wrap: wrap; justify-content: flex-end; }.filter-heading-actions .subtle-btn { padding-inline: 8px; }.filter-controls { grid-template-columns: 1fr; }.filter-field-range { grid-column: auto; }
+  .kpi-grid-v2 { gap: 7px; }.kpi-card-v2 { min-height: 94px; padding: 11px; gap: 8px; }.kpi-icon { width: 28px; height: 28px; }.kpi-value-v2 { font-size: 21px; }.kpi-context { font-size: 9.5px; }
+  .health-card-v2 { padding: 13px; gap: 13px; }.health-factors-v2 { grid-template-columns: 1fr 1fr; gap: 10px; }.health-factor-top { display: block; }.health-factor-top strong { display: block; margin-top: 2px; }.health-export-error { position: static; }
+  .chart-card-v2 { padding: 12px; }.chart-order-btn { display: none; }.chart-card-copy > p { font-size: 10px; }.chart-card-actions { max-width: 46%; }.chart-inline-select { max-width: 110px; }.chart-drag-handle-v2 { display: none; }.forecast-summary { gap: 4px; }.forecast-summary span { font-size: 8.5px; }
+  .issues-toolbar-v2 { align-items: stretch; flex-wrap: wrap; }.issues-search-wrap { flex-basis: 100%; }.result-count { flex: 1; align-self: center; }.sticky-col-1 { position: static !important; }.issues-table-v2 th.sticky-col-1 { position: sticky !important; left: 86px; }.issues-table-v2 td.sticky-col-1 { left: auto; }
+  .modal-overlay-v2 { padding: 0; align-items: end; }.modal-card-v2 { max-height: 94dvh; border-radius: 16px 16px 0 0; }.connection-field { grid-template-columns: 1fr; }.connection-row { justify-content: space-between; }.settings-section-heading { align-items: flex-start; }.preset-item-v2 { align-items: flex-start; }.modal-footer-v2 { padding-bottom: calc(13px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}

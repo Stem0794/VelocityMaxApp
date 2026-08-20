@@ -1,9 +1,9 @@
 const API = 'https://api.linear.app/graphql';
 
 async function gql(apiKey, query, variables = {}) {
-  let res;
+  let response;
   try {
-    res = await fetch(API, {
+    response = await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: apiKey },
       body: JSON.stringify({ query, variables }),
@@ -11,36 +11,26 @@ async function gql(apiKey, query, variables = {}) {
   } catch {
     throw new Error('Network error — could not reach Linear API. Check your connection.');
   }
-  if (!res.ok) throw new Error(`Linear API returned HTTP ${res.status}`);
-  const json = await res.json();
-  if (json.errors) throw new Error(json.errors.map(e => e.message).join('; '));
+  if (!response.ok) throw new Error(`Linear API returned HTTP ${response.status}`);
+  const json = await response.json();
+  if (json.errors?.length) throw new Error(json.errors.map(error => error.message).join('; '));
   return json.data;
 }
 
 export async function fetchTeamName(apiKey, teamId) {
-  const d = await gql(apiKey, `query($id:String!){team(id:$id){name}}`, { id: teamId });
-  return d.team?.name || teamId;
+  const data = await gql(apiKey, `query($id:String!){team(id:$id){name}}`, { id: teamId });
+  return data.team?.name || teamId;
 }
 
 export async function fetchTeams(apiKey) {
-  const data = await gql(apiKey, `
-    query {
-      teams(first: 50) {
-        nodes { id name }
-      }
-    }
-  `);
+  const data = await gql(apiKey, `query { teams(first: 50) { nodes { id name } } }`);
   return data.teams.nodes.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function fetchProjects(apiKey, teamId) {
   const data = await gql(apiKey, `
     query($teamId: String!) {
-      team(id: $teamId) {
-        projects(first: 100) {
-          nodes { id name }
-        }
-      }
+      team(id: $teamId) { projects(first: 100) { nodes { id name } } }
     }
   `, { teamId });
   return (data.team?.projects?.nodes || []).sort((a, b) => a.name.localeCompare(b.name));
@@ -49,14 +39,10 @@ export async function fetchProjects(apiKey, teamId) {
 export async function fetchWorkflowStates(apiKey, teamId) {
   const data = await gql(apiKey, `
     query($teamId: String!) {
-      team(id: $teamId) {
-        states { nodes { id name type } }
-      }
+      team(id: $teamId) { states { nodes { id name type } } }
     }
   `, { teamId });
-  return (data.team?.states?.nodes || [])
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(s => s.name);
+  return (data.team?.states?.nodes || []).sort((a, b) => a.name.localeCompare(b.name)).map(state => state.name);
 }
 
 export async function fetchIssues(apiKey, teamId, projectIds = []) {
@@ -65,29 +51,21 @@ export async function fetchIssues(apiKey, teamId, projectIds = []) {
   const withProjects = projectIds.length > 0;
 
   do {
-    const vars = { teamId, first: 100 };
-    if (cursor) vars.after = cursor;
-    if (withProjects) vars.projectIds = projectIds;
-
-    const varDefs = [
-      '$teamId: String!', '$first: Int!',
-      cursor ? '$after: String' : null,
+    const variables = { teamId, first: 100 };
+    if (cursor) variables.after = cursor;
+    if (withProjects) variables.projectIds = projectIds;
+    const definitions = [
+      '$teamId: String!', '$first: Int!', cursor ? '$after: String' : null,
       withProjects ? '$projectIds: [ID!]!' : null,
     ].filter(Boolean).join(', ');
-
     const data = await gql(apiKey, `
-      query(${varDefs}) {
+      query(${definitions}) {
         team(id: $teamId) {
-          issues(
-            first: $first
-            ${cursor ? 'after: $after' : ''}
-            orderBy: createdAt
-            ${withProjects ? 'filter: { project: { id: { in: $projectIds } } }' : ''}
-          ) {
+          issues(first: $first ${cursor ? 'after: $after' : ''} orderBy: createdAt
+            ${withProjects ? 'filter: { project: { id: { in: $projectIds } } }' : ''}) {
             pageInfo { hasNextPage endCursor }
             nodes {
-              id identifier title estimate priority priorityLabel
-              createdAt completedAt canceledAt startedAt
+              id identifier title estimate priority priorityLabel createdAt completedAt canceledAt startedAt
               state { name type }
               assignee { name }
               project { name }
@@ -97,21 +75,22 @@ export async function fetchIssues(apiKey, teamId, projectIds = []) {
           }
         }
       }
-    `, vars);
-
-    const conn = data.team.issues;
-    issues.push(...conn.nodes);
-    cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
+    `, variables);
+    const connection = data.team?.issues;
+    if (!connection) break;
+    issues.push(...connection.nodes);
+    cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
   } while (cursor);
 
   return issues;
 }
 
 async function fetchIssueHistory(apiKey, issueId) {
-  let history = [], cursor = null;
+  const history = [];
+  let cursor = null;
   do {
-    const vars = { issueId, first: 50 };
-    if (cursor) vars.after = cursor;
+    const variables = { issueId, first: 50 };
+    if (cursor) variables.after = cursor;
     const data = await gql(apiKey, `
       query($issueId: String!, $first: Int!${cursor ? ', $after: String' : ''}) {
         issue(id: $issueId) {
@@ -121,72 +100,82 @@ async function fetchIssueHistory(apiKey, issueId) {
           }
         }
       }
-    `, vars);
-    const conn = data.issue.history;
-    history.push(...conn.nodes.filter(n => n.fromState && n.toState));
-    cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
+    `, variables);
+    const connection = data.issue?.history;
+    if (!connection) break;
+    history.push(...connection.nodes.filter(node => node.fromState && node.toState));
+    cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
   } while (cursor);
-
   return history.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
 
 export async function fetchStatusHistories(apiKey, issues, onProgress) {
-  const BATCH = 10;
-  for (let i = 0; i < issues.length; i += BATCH) {
-    await Promise.all(
-      issues.slice(i, i + BATCH).map(async issue => {
+  const batchSize = 10;
+  const failures = [];
+  let completed = 0;
+  for (let index = 0; index < issues.length; index += batchSize) {
+    const batch = issues.slice(index, index + batchSize);
+    await Promise.all(batch.map(async issue => {
+      try {
         issue._history = await fetchIssueHistory(apiKey, issue.id);
-      })
-    );
-    onProgress?.(Math.min(i + BATCH, issues.length), issues.length);
-    if (i + BATCH < issues.length) await new Promise(r => setTimeout(r, 400));
+      } catch (error) {
+        issue._history = [];
+        failures.push({ id: issue.identifier || issue.id, message: error.message });
+      } finally {
+        completed += 1;
+        onProgress?.(completed, issues.length, failures.length);
+      }
+    }));
+    if (index + batchSize < issues.length) await new Promise(resolve => setTimeout(resolve, 400));
   }
+  return { failures };
 }
 
 function computeTimeByStatus(issue) {
-  const h = issue._history || [];
-  if (!h.length) return {};
+  const history = issue._history || [];
+  if (!history.length) return {};
   const result = {};
-  h.forEach((entry, i) => {
+  history.forEach((entry, index) => {
     const name = entry.fromState.name;
-    const start = i === 0 ? new Date(issue.createdAt) : new Date(h[i - 1].createdAt);
+    const start = index === 0 ? new Date(issue.createdAt) : new Date(history[index - 1].createdAt);
     const days = Math.max(0, (new Date(entry.createdAt) - start) / 86400000);
     result[name] = (result[name] || 0) + days;
   });
-  const last = h[h.length - 1];
-  const until = issue.completedAt ? new Date(issue.completedAt)
-    : issue.canceledAt ? new Date(issue.canceledAt) : new Date();
+  const last = history.at(-1);
+  const until = issue.completedAt ? new Date(issue.completedAt) : issue.canceledAt ? new Date(issue.canceledAt) : new Date();
   const tail = Math.max(0, (until - new Date(last.createdAt)) / 86400000);
   result[last.toState.name] = (result[last.toState.name] || 0) + tail;
-  return Object.fromEntries(Object.entries(result).map(([k, v]) => [k, Math.round(v * 10) / 10]));
+  return Object.fromEntries(Object.entries(result).map(([key, value]) => [key, Math.round(value * 10) / 10]));
 }
 
 export function processIssues(issues) {
-  return issues.map(i => {
-    const cycleTime = i.startedAt && i.completedAt
-      ? Math.round(((new Date(i.completedAt) - new Date(i.startedAt)) / 86400000) * 10) / 10 : null;
-    const leadTime = i.completedAt
-      ? Math.round(((new Date(i.completedAt) - new Date(i.createdAt)) / 86400000) * 10) / 10 : null;
+  return issues.map(issue => {
+    const cycleTime = issue.startedAt && issue.completedAt
+      ? Math.round(((new Date(issue.completedAt) - new Date(issue.startedAt)) / 86400000) * 10) / 10
+      : null;
+    const leadTime = issue.completedAt
+      ? Math.round(((new Date(issue.completedAt) - new Date(issue.createdAt)) / 86400000) * 10) / 10
+      : null;
     return {
-      id: i.identifier,
-      title: i.title,
-      points: i.estimate || 0,
-      priority: i.priorityLabel || '',
-      assignee: i.assignee?.name || '',
-      project: i.project?.name || '',
-      labels: i.labels?.nodes.map(l => l.name).join(', ') || '',
-      currentStatus: i.state?.name || '',
-      currentStatusType: i.state?.type || '',
-      cycleNumber: i.cycle?.number || '',
-      cycleStartsAt: i.cycle?.startsAt || '',
-      cycleEndsAt: i.cycle?.endsAt || '',
-      createdAt: i.createdAt || '',
-      startedAt: i.startedAt || '',
-      completedAt: i.completedAt || '',
-      canceledAt: i.canceledAt || '',
+      id: issue.identifier,
+      title: issue.title,
+      points: issue.estimate || 0,
+      priority: issue.priorityLabel || '',
+      assignee: issue.assignee?.name || '',
+      project: issue.project?.name || '',
+      labels: issue.labels?.nodes.map(label => label.name).join(', ') || '',
+      currentStatus: issue.state?.name || '',
+      currentStatusType: issue.state?.type || '',
+      cycleNumber: issue.cycle?.number || '',
+      cycleStartsAt: issue.cycle?.startsAt || '',
+      cycleEndsAt: issue.cycle?.endsAt || '',
+      createdAt: issue.createdAt || '',
+      startedAt: issue.startedAt || '',
+      completedAt: issue.completedAt || '',
+      canceledAt: issue.canceledAt || '',
       cycleTimeDays: cycleTime,
       leadTimeDays: leadTime,
-      timeByStatus: computeTimeByStatus(i),
+      timeByStatus: computeTimeByStatus(issue),
     };
   });
 }
@@ -194,25 +183,24 @@ export function processIssues(issues) {
 export function computeBurnupData(issues) {
   if (!issues.length) return [];
   const dailyMap = {};
-
-  const addPoints = (dateValue, field, points) => {
+  const add = (dateValue, field, points) => {
     if (!dateValue) return;
     const date = new Date(dateValue);
     if (Number.isNaN(date.getTime())) return;
     const day = date.toISOString().split('T')[0];
-    if (!dailyMap[day]) dailyMap[day] = { created: 0, completed: 0 };
+    dailyMap[day] ||= { created: 0, completed: 0 };
     dailyMap[day][field] += points;
   };
-
-  issues.forEach(i => {
-    const points = Number(i.points) || 0;
-    addPoints(i.createdAt, 'created', points);
-    addPoints(i.completedAt, 'completed', points);
+  issues.forEach(issue => {
+    const points = Number(issue.points) || 0;
+    add(issue.createdAt, 'created', points);
+    add(issue.completedAt, 'completed', points);
   });
-  let cumCreated = 0, cumCompleted = 0;
-  return Object.keys(dailyMap).sort().map(d => {
-    cumCreated += dailyMap[d].created;
-    cumCompleted += dailyMap[d].completed;
-    return { date: d, cumulativeCreated: cumCreated, totalScope: cumCreated, cumulativeCompleted: cumCompleted };
+  let created = 0;
+  let completed = 0;
+  return Object.keys(dailyMap).sort().map(date => {
+    created += dailyMap[date].created;
+    completed += dailyMap[date].completed;
+    return { date, cumulativeCreated: created, totalScope: created, cumulativeCompleted: completed };
   });
 }

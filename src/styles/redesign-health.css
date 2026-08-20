@@ -1,0 +1,24 @@
+.health-card-v2 { position: relative; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 20px; padding: 16px 18px; }
+.health-score-block { display: flex; align-items: center; gap: 12px; }
+.health-score-ring { width: 70px; height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px solid currentColor; border-radius: 50%; background: rgba(255,255,255,.018); }
+.health-score-ring strong { font-size: 22px; line-height: 1; }
+.health-score-ring span { margin-top: 2px; color: var(--text-muted); font-size: 9px; }
+.health-grade-v2 { font-size: 28px; font-weight: 800; line-height: 1; }
+.health-grade-label-v2 { margin-top: 3px; color: var(--text-secondary); font-size: 10px; white-space: nowrap; }
+.health-factors-v2 { display: grid; grid-template-columns: repeat(4, minmax(100px, 1fr)); gap: 14px; }
+.health-factor-v2 { min-width: 0; }
+.health-factor-top { display: flex; justify-content: space-between; gap: 7px; color: var(--text-muted); font-size: 9px; text-transform: uppercase; letter-spacing: .05em; }
+.health-factor-value-v2 { margin-top: 4px; font-size: 12px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.health-factor-track { height: 3px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: rgba(148, 163, 184, .12); }
+.health-factor-track span { display: block; height: 100%; border-radius: inherit; }
+.health-export { white-space: nowrap; }
+.health-export-error { position: absolute; right: 18px; bottom: -17px; }
+.tone-good { color: #54ddb0 !important; }.tone-warn { color: #f7c95c !important; }.tone-bad { color: #fc8b9f !important; }.tone-neutral { color: var(--text-secondary) !important; }
+.tone-bg-good { background: #34d399 !important; }.tone-bg-warn { background: #fbbf24 !important; }.tone-bg-bad { background: #fb7185 !important; }.tone-bg-neutral { background: #718096 !important; }
+
+.budget-card-v2 { padding: 15px 16px; }
+.budget-empty { margin-top: 10px; padding: 10px; border: 1px dashed var(--border-color); border-radius: 8px; color: var(--text-muted); font-size: 10px; }
+.budget-list-v2 { margin-top: 10px; display: grid; gap: 1px; }
+.budget-row-v2 { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(220px, 1.2fr); gap: 20px; align-items: center; padding: 9px 2px; border-top: 1px solid rgba(148, 163, 184, .08); }
+.budget-project { display: flex; gap: 8px; min-width: 0; align-items: baseline; }.budget-project strong { font-size: 12px; }.budget-project span { color: var(--text-secondary); font-size: 10px; }
+.budget-progress-v2 { display: grid; grid-template-columns: 1fr 42px; gap: 9px; align-items: center; }.budget-progress-v2 > div { height: 5px; overflow: hidden; border-radius: 999px; background: rgba(148, 163, 184, .12); }.budget-progress-v2 span { display: block; height: 100%; border-radius: inherit; }.budget-progress-v2 strong { text-align: right; font-size: 10px; }

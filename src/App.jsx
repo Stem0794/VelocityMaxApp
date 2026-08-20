@@ -1,1423 +1,225 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import {
-  ComposedChart, LineChart, Line, BarChart, Bar, ScatterChart, Scatter,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
-  AreaChart, Area,
-} from 'recharts';
-import {
-  fetchTeamName, fetchIssues, fetchWorkflowStates, fetchStatusHistories,
-  processIssues, computeBurnupData,
-} from './linearApi';
-import { fetchEverhourBudgets } from './everhourApi';
+import { AlertTriangle, RefreshCw, Settings } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import BudgetOverview from './components/BudgetOverview';
+import DashboardCharts from './components/DashboardCharts';
+import DashboardFilters from './components/DashboardFilters';
+import DashboardHeader from './components/DashboardHeader';
+import HealthScore from './components/HealthScore';
+import KpiGrid from './components/KpiGrid';
+import { resolveActivePreset } from './dashboardState';
+import useDashboardData from './hooks/useDashboardData';
+import useDashboardFilters from './hooks/useDashboardFilters';
+import useDashboardMetrics from './hooks/useDashboardMetrics';
 import SettingsModal from './SettingsModal';
-import { computeVelocityWithTrend, computeLeadTimeHistogram, computeSprintBurndown, computeCumulativeFlow, computeFlowEfficiency, computePrediction } from './computeCharts';
-import IssuesTable from './IssuesTable';
 
-function getHealthGrade(score) {
-  if (score >= 85) return { grade: 'A', label: 'Excellent', color: '#4ade80' };
-  if (score >= 70) return { grade: 'B', label: 'Good', color: '#60a5fa' };
-  if (score >= 55) return { grade: 'C', label: 'Fair', color: '#f59e0b' };
-  if (score >= 40) return { grade: 'D', label: 'Needs Attention', color: '#f97316' };
-  return { grade: 'F', label: 'At Risk', color: '#f87171' };
-}
-
-function factorColor(score) {
-  if (score >= 75) return '#4ade80';
-  if (score >= 50) return '#f59e0b';
-  return '#f87171';
-}
-
-function factorStatus(score) {
-  if (score >= 75) return 'Good';
-  if (score >= 50) return 'Fair';
-  return 'Poor';
-}
-
-const DEFAULT_PRESETS = [
-  { id: 'demo', name: 'Demo', teamId: '', projectIds: [], everhourProjectIds: [] },
-];
-
+const DEFAULT_PRESETS = [{ id: 'demo', name: 'Demo', teamId: '', projectIds: [], everhourProjectIds: [] }];
 const GOOGLE_CLIENT_ID = '971045009454-n3krt7kq2ku7fg43he23elm9kg5vvq0v.apps.googleusercontent.com';
 
-function loadFromStorage(key, fallback) {
-  try {
-    const s = localStorage.getItem(key);
-    return s ? JSON.parse(s) : fallback;
-  } catch {
-    return fallback;
-  }
+function loadJSON(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key) || '') || fallback; }
+  catch { return fallback; }
 }
 
-function MultiSelectDropdown({ options, selected, onChange, placeholder = 'All' }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const allSelected = selected.length === 0;
-  const label = allSelected ? placeholder : `${selected.length} of ${options.length} selected`;
-
-  const toggleOption = (opt) =>
-    onChange(selected.includes(opt) ? selected.filter(s => s !== opt) : [...selected, opt]);
-
-  return (
-    <div className="multiselect" ref={ref}>
-      <button
-        type="button"
-        className={`multiselect-btn${!allSelected ? ' has-selection' : ''}`}
-        onClick={() => setOpen(o => !o)}
-      >
-        {label}
-      </button>
-      {open && (
-        <div className="multiselect-dropdown">
-          <label className="multiselect-option">
-            <input type="checkbox" checked={allSelected} onChange={() => onChange([])} />
-            All Statuses
-          </label>
-          <hr className="multiselect-divider" />
-          {options.map(opt => (
-            <label key={opt} className="multiselect-option">
-              <input
-                type="checkbox"
-                checked={selected.includes(opt)}
-                onChange={() => toggleOption(opt)}
-              />
-              {opt}
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const DEFAULT_CHART_ORDER = [
-  'velocity', 'cycle-compare', 'cycle-times', 'burnup',
-  'burndown', 'lead-time', 'flow-efficiency', 'status-breakdown',
-  'cfd', 'prediction', 'issues',
-];
-
-export default function App() {
-  // ─── Auth ───
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => sessionStorage.getItem('vmAuthed') === '1'
-  );
+function LoginScreen({ onAuthenticated, onDemo }) {
   const [authError, setAuthError] = useState('');
-
-  // ─── Settings ───
-  const [showSettings, setShowSettings] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('vmApiKey') || '');
-  const [everhourApiKey, setEverhourApiKey] = useState(() => localStorage.getItem('vmEverhourKey') || '');
-  const [presets, setPresets] = useState(() => loadFromStorage('vmPresets', DEFAULT_PRESETS));
-  const [activePresetId, setActivePresetId] = useState(
-    () => localStorage.getItem('vmActivePreset') || 'demo'
-  );
-
-  const activePreset = useMemo(
-    () => presets.find(p => p.id === activePresetId) || presets[0],
-    [presets, activePresetId]
-  );
-
-  // ─── Data ───
-  const [data, setData] = useState(null);
-  const [budgetData, setBudgetData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [historyProgress, setHistoryProgress] = useState({ done: 0, total: 0 });
-  const [error, setError] = useState('');
-  const fetchSeq = useRef(0);
-
-  // ─── Filters ───
-  const [selectedProject, setSelectedProject] = useState('All');
-  const [selectedAssignee, setSelectedAssignee] = useState('All');
-  // Empty array = all statuses shown; non-empty = only those statuses shown
-  const [selectedCurrentStatuses, setSelectedCurrentStatuses] = useState(() => {
-    try { const s = sessionStorage.getItem('vmStatusFilter'); return s ? JSON.parse(s) : []; }
-    catch { return []; }
-  });
-  const [selectedStatuses, setSelectedStatuses] = useState([]);
-  const [dateFrom, setDateFrom] = useState(() => sessionStorage.getItem('vmDateFrom') || '');
-  const [dateTo, setDateTo] = useState(() => sessionStorage.getItem('vmDateTo') || '');
-  const [selectedCycle, setSelectedCycle] = useState('');
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(
-    () => localStorage.getItem('vmAutoRefresh') || 'off'
-  );
-  const [chartOrder, setChartOrder] = useState(() => {
+  const handleCredential = useCallback(response => {
     try {
-      const saved = localStorage.getItem('vmChartOrder');
-      if (!saved) return DEFAULT_CHART_ORDER;
-      const parsed = JSON.parse(saved);
-      // Append any chart IDs added since the user last saved their order
-      const missing = DEFAULT_CHART_ORDER.filter(id => !parsed.includes(id));
-      return [...parsed, ...missing];
-    } catch { return DEFAULT_CHART_ORDER; }
-  });
-  const [dragOverId, setDragOverId] = useState(null);
-  const dragItem = useRef(null);
-
-  const handleGoogleCredential = useCallback((response) => {
-    try {
-      const b64 = response.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(atob(b64 + '='.repeat((4 - b64.length % 4) % 4)));
+      const part = response.credential?.split('.')[1];
+      if (!part) throw new Error('Missing credential');
+      const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(base64 + '='.repeat((4 - base64.length % 4) % 4)));
+      if (payload.aud !== GOOGLE_CLIENT_ID || Number(payload.exp) * 1000 <= Date.now() || payload.email_verified === false) {
+        throw new Error('Google credential is not valid for this application.');
+      }
       const allowed = import.meta.env.VITE_ALLOWED_EMAILS;
       if (allowed) {
-        const list = allowed.split(',').map(e => e.trim().toLowerCase());
-        if (!list.includes(payload.email.toLowerCase())) {
-          setAuthError(`Access denied: ${payload.email} is not authorised.`);
-          return;
-        }
+        const emails = allowed.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
+        if (!emails.includes(String(payload.email || '').toLowerCase())) throw new Error(`Access denied for ${payload.email || 'this account'}.`);
       }
-      sessionStorage.setItem('vmAuthed', '1');
-      setIsAuthenticated(true);
-    } catch {
-      setAuthError('Authentication failed — please try again.');
+      onAuthenticated();
+    } catch (error) {
+      setAuthError(error.message || 'Authentication failed. Please try again.');
     }
-  }, []);
+  }, [onAuthenticated]);
 
-  const handleDemoLogin = () => {
-    setActivePresetId('demo');
-    localStorage.setItem('vmActivePreset', 'demo');
+  useEffect(() => {
+    const init = () => {
+      const element = document.getElementById('google-signin-btn');
+      if (!element || !window.google?.accounts?.id) return;
+      element.replaceChildren();
+      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredential });
+      window.google.accounts.id.renderButton(element, { theme: 'filled_black', size: 'large', text: 'signin_with', shape: 'rectangular', width: 280 });
+    };
+    if (window.google?.accounts?.id) {
+      init();
+      return undefined;
+    }
+    const existing = document.querySelector('script[data-velocitymax-google]');
+    if (existing) {
+      existing.addEventListener('load', init, { once: true });
+      return () => existing.removeEventListener('load', init);
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.velocitymaxGoogle = 'true';
+    script.addEventListener('load', init, { once: true });
+    document.head.appendChild(script);
+    return () => script.removeEventListener('load', init);
+  }, [handleCredential]);
+
+  return (
+    <main className="login-screen-v2">
+      <section className="login-card-v2">
+        <div className="login-brand"><div className="brand-mark">VM</div><div><h1>VelocityMAX</h1><p>Engineering delivery metrics in one dashboard.</p></div></div>
+        <div id="google-signin-btn" className="google-signin-slot" />
+        {authError ? <p className="inline-error" role="alert">{authError}</p> : null}
+        <div className="login-divider"><span>or</span></div>
+        <button className="demo-btn" type="button" onClick={onDemo}>Explore with demo data</button>
+        <p className="login-security-note">Google sign-in limits dashboard access. API keys remain stored locally in your browser.</p>
+      </section>
+    </main>
+  );
+}
+
+function LoadingScreen({ presetName }) {
+  return (
+    <main className="login-screen-v2">
+      <div className="loading-state-v2">
+        <div className="loader" />
+        <strong>Loading {presetName || 'dashboard'}…</strong>
+        <span>Fetching the core dataset. Issue history will continue in the dashboard.</span>
+      </div>
+    </main>
+  );
+}
+
+export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => sessionStorage.getItem('vmAuthed') === '1');
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsAddPreset, setSettingsAddPreset] = useState(false);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('vmApiKey') || '');
+  const [everhourApiKey, setEverhourApiKey] = useState(() => localStorage.getItem('vmEverhourKey') || '');
+  const [presets, setPresets] = useState(() => loadJSON('vmPresets', DEFAULT_PRESETS));
+  const [activePresetId, setActivePresetId] = useState(() => localStorage.getItem('vmActivePreset') || 'demo');
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => localStorage.getItem('vmAutoRefresh') || 'off');
+  const activePreset = useMemo(() => resolveActivePreset(presets, activePresetId), [activePresetId, presets]);
+  const closeSettings = useCallback(() => setShowSettings(false), []);
+
+  useEffect(() => {
+    if (activePreset && activePreset.id !== activePresetId) {
+      setActivePresetId(activePreset.id);
+      localStorage.setItem('vmActivePreset', activePreset.id);
+    }
+  }, [activePreset, activePresetId]);
+
+  const dashboard = useDashboardData({ isAuthenticated, activePreset, apiKey, everhourApiKey, autoRefreshInterval });
+  const filters = useDashboardFilters(dashboard.data, activePreset);
+  const metrics = useDashboardMetrics(filters.filteredIssues, dashboard.data?.lastUpdated, dashboard.data?.workflowStates || []);
+
+  const authenticate = () => {
     sessionStorage.setItem('vmAuthed', '1');
     setIsAuthenticated(true);
   };
-
-  const handleSignOut = () => {
+  const demoLogin = () => {
+    setActivePresetId('demo');
+    localStorage.setItem('vmActivePreset', 'demo');
+    authenticate();
+  };
+  const signOut = () => {
     sessionStorage.removeItem('vmAuthed');
     setIsAuthenticated(false);
-    if (window.google?.accounts?.id) window.google.accounts.id.disableAutoSelect();
+    window.google?.accounts?.id?.disableAutoSelect?.();
+  };
+  const selectPreset = id => {
+    setActivePresetId(id);
+    localStorage.setItem('vmActivePreset', id);
+  };
+  const openSettings = (addPreset = false) => {
+    setSettingsAddPreset(addPreset);
+    setShowSettings(true);
   };
 
-  const loadPresetData = async (preset, key) => {
-    if (!preset) return;
-    const seq = ++fetchSeq.current;
-    setLoading(true);
-    setLoadingHistory(false);
-    setError('');
-    setData(null);
-    setBudgetData(null);
-    setSelectedProject('All');
-    setSelectedAssignee('All');
-
-    // Apply preset's saved default filters if they exist
-    if (preset.defaultStatuses !== undefined) setSelectedCurrentStatuses(preset.defaultStatuses);
-    if (preset.defaultDateFrom !== undefined) setDateFrom(preset.defaultDateFrom);
-    if (preset.defaultDateTo !== undefined) setDateTo(preset.defaultDateTo);
-
-    // Everhour budget — fire independently so it doesn't block Linear data
-    if (everhourApiKey && preset.everhourProjectIds?.length > 0) {
-      fetchEverhourBudgets(everhourApiKey, preset.everhourProjectIds)
-        .then(rows => { if (fetchSeq.current === seq) setBudgetData(rows); })
-        .catch(() => {});
-    }
-
-    if (!preset.teamId || !key) {
-      try {
-        const res = await fetch(import.meta.env.BASE_URL + 'data.json');
-        if (!res.ok) throw new Error('Demo data not available. Has the GitHub Action run?');
-        const json = await res.json();
-        if (fetchSeq.current !== seq) return;
-        setData(json);
-      } catch (err) {
-        if (fetchSeq.current === seq) setError(err.message);
-      } finally {
-        if (fetchSeq.current === seq) setLoading(false);
-      }
-      return;
-    }
-
-    try {
-      const [teamName, rawIssues, workflowStates] = await Promise.all([
-        preset.teamName ? Promise.resolve(preset.teamName) : fetchTeamName(key, preset.teamId),
-        fetchIssues(key, preset.teamId, preset.projectIds),
-        fetchWorkflowStates(key, preset.teamId),
-      ]);
-      if (fetchSeq.current !== seq) return;
-
-      const processed = processIssues(rawIssues);
-      setData({
-        issues: processed,
-        burnupData: computeBurnupData(processed),
-        workflowStates,
-        lastUpdated: new Date().toISOString(),
-        team: teamName,
-      });
-      setLoading(false);
-
-      if (!rawIssues.length) return;
-      setLoadingHistory(true);
-      setHistoryProgress({ done: 0, total: rawIssues.length });
-
-      await fetchStatusHistories(key, rawIssues, (done, total) => {
-        if (fetchSeq.current === seq) setHistoryProgress({ done, total });
-      });
-
-      if (fetchSeq.current !== seq) return;
-      const processedWithHistory = processIssues(rawIssues);
-      setData(prev => prev ? { ...prev, issues: processedWithHistory } : prev);
-    } catch (err) {
-      if (fetchSeq.current !== seq) return;
-      setError(err.message);
-      setLoading(false);
-    } finally {
-      if (fetchSeq.current === seq) setLoadingHistory(false);
+  const saveSettings = ({ apiKey: nextApiKey, everhourApiKey: nextEverhourKey, presets: nextPresets }) => {
+    const safePresets = nextPresets.length ? nextPresets : DEFAULT_PRESETS;
+    setApiKey(nextApiKey);
+    localStorage.setItem('vmApiKey', nextApiKey);
+    setEverhourApiKey(nextEverhourKey);
+    localStorage.setItem('vmEverhourKey', nextEverhourKey);
+    setPresets(safePresets);
+    localStorage.setItem('vmPresets', JSON.stringify(safePresets));
+    const nextActive = resolveActivePreset(safePresets, activePresetId);
+    if (nextActive) {
+      setActivePresetId(nextActive.id);
+      localStorage.setItem('vmActivePreset', nextActive.id);
     }
   };
 
-  useEffect(() => {
-    if (isAuthenticated) return;
-    const initGSI = () => {
-      const btnEl = document.getElementById('google-signin-btn');
-      if (!window.google?.accounts?.id || !btnEl) return;
-      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
-      window.google.accounts.id.renderButton(btnEl, {
-        theme: 'filled_black', size: 'large', text: 'signin_with', shape: 'rectangular', width: 280,
-      });
-    };
-    if (window.google?.accounts) {
-      initGSI();
-    } else {
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      script.onload = initGSI;
-      document.head.appendChild(script);
-      return () => { if (document.head.contains(script)) document.head.removeChild(script); };
-    }
-  }, [isAuthenticated, handleGoogleCredential]);
-
-  useEffect(() => {
-    if (isAuthenticated && activePreset) loadPresetData(activePreset, apiKey);
-  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    sessionStorage.setItem('vmStatusFilter', JSON.stringify(selectedCurrentStatuses));
-  }, [selectedCurrentStatuses]);
-
-  useEffect(() => {
-    sessionStorage.setItem('vmDateFrom', dateFrom);
-    sessionStorage.setItem('vmDateTo', dateTo);
-  }, [dateFrom, dateTo]);
-
-  useEffect(() => {
-    if (autoRefreshInterval === 'off') return;
-    const ms = { '5m': 300000, '15m': 900000, '30m': 1800000 }[autoRefreshInterval];
-    if (!ms) return;
-    const id = setInterval(() => {
-      if (activePreset) loadPresetData(activePreset, apiKey);
-    }, ms);
-    return () => clearInterval(id);
-  }, [autoRefreshInterval]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const selectPreset = (presetId) => {
-    setActivePresetId(presetId);
-    localStorage.setItem('vmActivePreset', presetId);
-    const p = presets.find(x => x.id === presetId) || presets[0];
-    loadPresetData(p, apiKey);
-  };
-
-  const handleSaveSettings = ({ apiKey: newKey, everhourApiKey: newEverhourKey, presets: newPresets }) => {
-    const keyChanged = newKey !== apiKey;
-    setApiKey(newKey);
-    localStorage.setItem('vmApiKey', newKey);
-    setEverhourApiKey(newEverhourKey);
-    localStorage.setItem('vmEverhourKey', newEverhourKey);
-    setPresets(newPresets);
-    localStorage.setItem('vmPresets', JSON.stringify(newPresets));
-
-    const stillExists = newPresets.find(p => p.id === activePresetId);
-    const targetPreset = stillExists || newPresets[0] || null;
-    const targetId = targetPreset?.id ?? null;
-    setActivePresetId(targetId);
-    if (targetId) localStorage.setItem('vmActivePreset', targetId);
-
-    if (targetPreset && (keyChanged || !stillExists)) {
-      loadPresetData(targetPreset, newKey);
-    }
-  };
-
-  const handleSaveFiltersToPreset = () => {
+  const saveFilterDefaults = () => {
     if (!activePreset) return;
-    const updated = presets.map(p =>
-      p.id === activePresetId
-        ? { ...p, defaultStatuses: selectedCurrentStatuses, defaultDateFrom: dateFrom, defaultDateTo: dateTo }
-        : p
-    );
-    setPresets(updated);
-    localStorage.setItem('vmPresets', JSON.stringify(updated));
+    const next = presets.map(preset => preset.id === activePreset.id ? { ...preset, ...filters.savedDefaults } : preset);
+    setPresets(next);
+    localStorage.setItem('vmPresets', JSON.stringify(next));
   };
 
-  // ─── Derived filter options ───
-  const uniqueProjects = useMemo(() => {
-    if (!data?.issues) return [];
-    return [...new Set(data.issues.map(i => i.project).filter(Boolean))].sort();
-  }, [data]);
+  if (!isAuthenticated) return <LoginScreen onAuthenticated={authenticate} onDemo={demoLogin} />;
+  if (!dashboard.data && !dashboard.error) return <LoadingScreen presetName={activePreset?.name} />;
 
-  const uniqueAssignees = useMemo(() => {
-    if (!data?.issues) return [];
-    return [...new Set(data.issues.map(i => i.assignee).filter(Boolean))].sort();
-  }, [data]);
-
-  // Prefer the authoritative list fetched from Linear so deleted states
-  // don't appear. Falls back to deriving from issue data (e.g. demo data.json).
-  const uniqueCurrentStatuses = useMemo(() => {
-    if (data?.workflowStates?.length) return data.workflowStates;
-    if (!data?.issues) return [];
-    return [...new Set(data.issues.map(i => i.currentStatus).filter(Boolean))].sort();
-  }, [data]);
-
-  const allStatuses = useMemo(() => {
-    if (data?.workflowStates?.length) return data.workflowStates;
-    if (!data?.issues) return [];
-    const set = new Set();
-    data.issues.forEach(i => Object.keys(i.timeByStatus || {}).forEach(s => set.add(s)));
-    return [...set].sort();
-  }, [data]);
-
-  useEffect(() => {
-    if (allStatuses.length > 0 && selectedStatuses.length === 0) {
-      setSelectedStatuses([...allStatuses]);
-    }
-  }, [allStatuses]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─── Filtered issues ───
-  const filteredIssues = useMemo(() => {
-    if (!data?.issues) return [];
-    return data.issues.filter(issue => {
-      if (selectedProject !== 'All' && issue.project !== selectedProject) return false;
-      if (selectedAssignee !== 'All' && issue.assignee !== selectedAssignee) return false;
-      if (selectedCurrentStatuses.length > 0 && !selectedCurrentStatuses.includes(issue.currentStatus)) return false;
-      if (dateFrom && new Date(issue.createdAt) < new Date(dateFrom)) return false;
-      if (dateTo && new Date(issue.createdAt) > new Date(dateTo + 'T23:59:59Z')) return false;
-      return true;
-    });
-  }, [data, selectedProject, selectedAssignee, selectedCurrentStatuses, dateFrom, dateTo]);
-
-  // ─── Chart data ───
-  const velocityData = useMemo(
-    () => computeVelocityWithTrend(filteredIssues, data?.lastUpdated),
-    [filteredIssues, data?.lastUpdated]
-  );
-
-  const cycleTimeData = useMemo(() => {
-    return filteredIssues
-      .filter(i => i.completedAt && i.cycleTimeDays != null)
-      .map(i => ({
-        completed: new Date(i.completedAt).getTime(),
-        dateStr: new Date(i.completedAt).toLocaleDateString(),
-        cycleTime: i.cycleTimeDays,
-        title: i.title,
-        points: i.points || 1,
-      }))
-      .sort((a, b) => a.completed - b.completed);
-  }, [filteredIssues]);
-
-  const statusBreakdownData = useMemo(() => {
-    const statuses = selectedStatuses.length > 0 ? selectedStatuses : allStatuses;
-    return statuses.map(status => {
-      const values = filteredIssues.map(i => i.timeByStatus?.[status]).filter(v => v !== undefined);
-      const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-      const sorted = [...values].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      const median = sorted.length
-        ? (sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2)
-        : 0;
-      return { status, avg: Number(avg.toFixed(1)), median: Number(median.toFixed(1)) };
-    });
-  }, [filteredIssues, selectedStatuses, allStatuses]);
-
-  const burnupData = useMemo(() => computeBurnupData(filteredIssues), [filteredIssues]);
-
-  const leadTimeHistogram = useMemo(() => computeLeadTimeHistogram(filteredIssues), [filteredIssues]);
-
-  const uniqueCycles = useMemo(() => {
-    if (!filteredIssues.length) return [];
-    const cycleMap = {};
-    filteredIssues.forEach(i => {
-      if (!i.cycleNumber) return;
-      if (!cycleMap[i.cycleNumber]) {
-        cycleMap[i.cycleNumber] = { number: i.cycleNumber, startsAt: i.cycleStartsAt || '', endsAt: i.cycleEndsAt || '' };
-      }
-    });
-    return Object.values(cycleMap).sort((a, b) => b.number - a.number);
-  }, [filteredIssues]);
-
-  const currentCycleNumber = useMemo(() => {
-    const today = new Date();
-    const active = uniqueCycles.find(c => {
-      if (!c.startsAt || !c.endsAt) return false;
-      const startsAt = new Date(c.startsAt);
-      const endsAt = new Date(c.endsAt);
-      return !Number.isNaN(startsAt.getTime()) && !Number.isNaN(endsAt.getTime())
-        && startsAt <= today && today <= endsAt;
-    });
-    return active?.number ?? uniqueCycles[0]?.number ?? null;
-  }, [uniqueCycles]);
-
-  useEffect(() => {
-    if (currentCycleNumber != null) setSelectedCycle(String(currentCycleNumber));
-  }, [currentCycleNumber]);
-
-  const sprintBurndownData = useMemo(
-    () => computeSprintBurndown(filteredIssues, selectedCycle),
-    [filteredIssues, selectedCycle]
-  );
-
-  const cumulativeFlowData = useMemo(
-    () => computeCumulativeFlow(filteredIssues, data?.lastUpdated),
-    [filteredIssues, data?.lastUpdated]
-  );
-
-  const flowEfficiency = useMemo(() => computeFlowEfficiency(filteredIssues), [filteredIssues]);
-
-  const predictionResult = useMemo(() => computePrediction(filteredIssues, velocityData), [filteredIssues, velocityData]);
-
-  const healthScore = useMemo(() => {
-    const factors = [];
-
-    // Velocity trend — last 4 weeks vs prior 4 weeks
-    if (velocityData.length >= 2) {
-      const last4 = velocityData.slice(-4).map(w => w.points);
-      const prev4 = velocityData.slice(-8, -4).map(w => w.points);
-      const lastAvg = last4.reduce((s, v) => s + v, 0) / last4.length;
-      const prevAvg = prev4.length ? prev4.reduce((s, v) => s + v, 0) / prev4.length : lastAvg;
-      const ratio = prevAvg > 0 ? lastAvg / prevAvg : 1;
-      const score = ratio >= 1.1 ? 100 : ratio >= 0.9 ? 75 : ratio >= 0.7 ? 50 : 25;
-      const value = ratio >= 1.1
-        ? `+${Math.round((ratio - 1) * 100)}% vs prev`
-        : ratio >= 0.9 ? 'Stable'
-        : `-${Math.round((1 - ratio) * 100)}% vs prev`;
-      factors.push({ key: 'velocity', label: 'Velocity', value, score });
-    }
-
-    // Flow efficiency
-    if (flowEfficiency) {
-      const fe = flowEfficiency.avg;
-      const score = fe >= 50 ? 100 : fe >= 30 ? 75 : fe >= 15 ? 50 : 25;
-      factors.push({ key: 'flow', label: 'Flow Efficiency', value: `${fe}% active time`, score });
-    }
-
-    // Lead time — % of completed issues finishing in ≤7 days
-    const totalLt = leadTimeHistogram.reduce((s, b) => s + b.count, 0);
-    if (totalLt > 0) {
-      const fast = leadTimeHistogram.slice(0, 2).reduce((s, b) => s + b.count, 0); // ≤3d + 3–7d
-      const pct = Math.round(fast / totalLt * 100);
-      const score = pct >= 70 ? 100 : pct >= 50 ? 75 : pct >= 30 ? 50 : 25;
-      factors.push({ key: 'leadtime', label: 'Lead Time', value: `${pct}% done in ≤7d`, score });
-    }
-
-    // Completion rate
-    const total = filteredIssues.length;
-    const done = filteredIssues.filter(i => i.completedAt).length;
-    if (total > 0) {
-      const pct = Math.round(done / total * 100);
-      const score = pct >= 70 ? 100 : pct >= 50 ? 75 : pct >= 30 ? 50 : 25;
-      factors.push({ key: 'completion', label: 'Completion Rate', value: `${pct}% of issues`, score });
-    }
-
-    if (!factors.length) return null;
-    const overall = Math.round(factors.reduce((s, f) => s + f.score, 0) / factors.length);
-    return { overall, factors };
-  }, [velocityData, flowEfficiency, leadTimeHistogram, filteredIssues]);
-
-  const cycleComparison = useMemo(() => {
-    if (!filteredIssues.length || uniqueCycles.length < 2) return [];
-    return uniqueCycles.slice(0, 8).map(c => {
-      const issues = filteredIssues.filter(i => String(i.cycleNumber) === String(c.number));
-      const completed = issues.filter(i => i.completedAt);
-      const withCT = completed.filter(i => i.cycleTimeDays != null);
-      const avgCT = withCT.length
-        ? Math.round(withCT.reduce((s, i) => s + i.cycleTimeDays, 0) / withCT.length * 10) / 10
-        : 0;
-      return {
-        label: `C${c.number}${c.number === currentCycleNumber ? ' ▶' : ''}`,
-        points: completed.reduce((s, i) => s + (i.points || 0), 0),
-        tickets: completed.length,
-        avgCycleTime: avgCT,
-        completionPct: issues.length ? Math.round(completed.length / issues.length * 100) : 0,
-      };
-    }).reverse();
-  }, [filteredIssues, uniqueCycles, currentCycleNumber]);
-
-  const applyQuickRange = (range) => {
-    const today = new Date();
-    const fmt = d => d.toISOString().split('T')[0];
-    if (range === '30d') {
-      const f = new Date(today); f.setDate(f.getDate() - 30);
-      setDateFrom(fmt(f)); setDateTo(fmt(today));
-    } else if (range === '90d') {
-      const f = new Date(today); f.setDate(f.getDate() - 90);
-      setDateFrom(fmt(f)); setDateTo(fmt(today));
-    } else if (range === 'quarter') {
-      const q = Math.floor(today.getMonth() / 3);
-      setDateFrom(fmt(new Date(today.getFullYear(), q * 3, 1)));
-      setDateTo(fmt(today));
-    } else {
-      setDateFrom(''); setDateTo('');
-    }
-  };
-
-  const toggleStatus = (status) => {
-    setSelectedStatuses(prev =>
-      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
-    );
-  };
-
-  const resetFilters = () => {
-    setSelectedProject('All');
-    setSelectedAssignee('All');
-    setSelectedCurrentStatuses([]);
-    setDateFrom('');
-    setDateTo('');
-    setSelectedStatuses([...allStatuses]);
-  };
-
-  // ─── Login screen ───
-  if (!isAuthenticated) {
+  if (!dashboard.data && dashboard.error) {
     return (
-      <div className="login-screen">
-        <div className="glass-card login-card">
-          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>VelocityMAX</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.75rem' }}>
-            Sign in to access the dashboard
-          </p>
-          <div id="google-signin-btn" style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
-          {authError && (
-            <p style={{ color: 'var(--chart-red)', margin: '0.75rem 0 0', fontSize: '0.875rem' }}>
-              {authError}
-            </p>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1.25rem 0 1rem' }}>
-            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)' }} />
-            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', opacity: 0.7 }}>or</span>
-            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)' }} />
+      <main className="login-screen-v2">
+        <section className="error-state-v2">
+          <AlertTriangle size={24} aria-hidden="true" />
+          <h1>Could not load the dashboard</h1>
+          <p>{dashboard.error}</p>
+          <div>
+            <button type="button" onClick={dashboard.retry}><RefreshCw size={15} aria-hidden="true" /> Retry</button>
+            <button className="subtle-btn" type="button" onClick={() => openSettings(false)}><Settings size={15} aria-hidden="true" /> Settings</button>
           </div>
-          <button className="btn-secondary" style={{ width: '100%' }} onClick={handleDemoLogin}>
-            Explore with demo data
-          </button>
-        </div>
-      </div>
+        </section>
+        {showSettings ? <SettingsModal apiKey={apiKey} everhourApiKey={everhourApiKey} presets={presets} onSave={saveSettings} onClose={closeSettings} /> : null}
+      </main>
     );
   }
 
-  if (loading) {
-    return (
-      <div className="login-screen">
-        <div style={{ textAlign: 'center' }}>
-          <div className="loader" />
-          <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>
-            Loading data for <strong style={{ color: 'var(--text-primary)' }}>{activePreset?.name}</strong>…
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!data && error) {
-    return (
-      <div className="login-screen">
-        <div className="glass-card" style={{ maxWidth: 480, textAlign: 'center' }}>
-          <h2 style={{ marginBottom: '1rem' }}>Could not load data</h2>
-          <p style={{ color: 'var(--chart-red)', marginBottom: '1.5rem' }}>{error}</p>
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-            <button style={{ width: 'auto' }} onClick={() => loadPresetData(activePreset, apiKey)}>
-              Retry
-            </button>
-            <button className="btn-secondary" style={{ width: 'auto' }} onClick={() => setShowSettings(true)}>
-              Open Settings
-            </button>
-          </div>
-          {showSettings && (
-            <SettingsModal
-              apiKey={apiKey}
-              everhourApiKey={everhourApiKey}
-              presets={presets}
-              onSave={handleSaveSettings}
-              onClose={() => setShowSettings(false)}
-            />
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload?.length) {
-      return (
-        <div style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.1)', padding: '12px', borderRadius: '8px', fontSize: '13px' }}>
-          <p style={{ margin: 0, fontWeight: 'bold' }}>{label || payload[0].payload.dateStr || payload[0].payload.status}</p>
-          {payload.map((p, i) => (
-            <p key={i} style={{ margin: '4px 0 0 0', color: p.color }}>{p.name}: {p.value}</p>
-          ))}
-          {payload[0].payload.title && (
-            <p style={{ margin: '5px 0 0 0', fontSize: '11px', color: '#94a3b8' }}>{payload[0].payload.title}</p>
-          )}
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const totalIssues = filteredIssues.length;
-  const completedIssues = filteredIssues.filter(i => i.completedAt).length;
-  const totalPoints = filteredIssues.reduce((s, i) => s + (i.points || 0), 0);
-  const avgCycleTime = cycleTimeData.length
-    ? (cycleTimeData.reduce((s, i) => s + i.cycleTime, 0) / cycleTimeData.length).toFixed(1)
-    : '—';
-
-  const exportSnapshot = () => {
-    if (!healthScore) return;
-    const W = 1200, H = 380;
-    const canvas = document.createElement('canvas');
-    canvas.width = W * 2; canvas.height = H * 2;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(2, 2);
-
-    const grade = getHealthGrade(healthScore.overall);
-
-    const rr = (x, y, w, h, r) => {
-      ctx.beginPath();
-      ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
-      ctx.arcTo(x + w, y, x + w, y + r, r); ctx.lineTo(x + w, y + h - r);
-      ctx.arcTo(x + w, y + h, x + w - r, y + h, r); ctx.lineTo(x + r, y + h);
-      ctx.arcTo(x, y + h, x, y + h - r, r); ctx.lineTo(x, y + r);
-      ctx.arcTo(x, y, x + r, y, r); ctx.closePath();
-    };
-
-    // Background
-    ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, W, H);
-
-    // Header strip
-    ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fillRect(0, 0, W, 50);
-    ctx.fillStyle = '#a5b4fc';
-    ctx.font = 'bold 17px system-ui,sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('VelocityMAX', 32, 31);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = '13px system-ui,sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText([activePreset?.name, data?.team].filter(Boolean).join(' · '), W / 2, 31);
-    ctx.textAlign = 'right';
-    ctx.fillText(new Date().toLocaleDateString(), W - 32, 31);
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0, 50); ctx.lineTo(W, 50); ctx.stroke();
-
-    const TOP = 68;
-
-    // Score circle
-    const cx = 118, cy = TOP + 86;
-    ctx.strokeStyle = grade.color; ctx.lineWidth = 5;
-    ctx.beginPath(); ctx.arc(cx, cy, 58, 0, Math.PI * 2); ctx.stroke();
-    // Score number — baseline at cy+15, 42px → visual top ≈ cy-16, bottom ≈ cy+20 (inside circle)
-    ctx.fillStyle = grade.color;
-    ctx.font = 'bold 42px system-ui,sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(String(healthScore.overall), cx, cy + 12);
-    // "/100" — moved to cy+38 so there's a clear ~12px gap below the score number
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '11px system-ui,sans-serif';
-    ctx.fillText('/ 100', cx, cy + 38);
-    // Grade letter — baseline at cy+86 so cap top ≈ cy+64, well below circle bottom (cy+58)
-    ctx.fillStyle = grade.color;
-    ctx.font = 'bold 28px system-ui,sans-serif';
-    ctx.fillText(grade.grade, cx, cy + 86);
-    // Grade label
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.font = '11px system-ui,sans-serif';
-    ctx.fillText(grade.label.toUpperCase(), cx, cy + 102);
-
-    // Divider
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(212, TOP); ctx.lineTo(212, H - 28); ctx.stroke();
-
-    // KPI tiles (2×2)
-    const kpis = [
-      { label: 'Total Issues', value: String(totalIssues) },
-      { label: 'Completed', value: String(completedIssues) },
-      { label: 'Story Points', value: String(totalPoints) },
-      { label: 'Avg Cycle Time', value: avgCycleTime !== '—' ? `${avgCycleTime}d` : '—' },
-    ];
-    const kW = 188, kH = 74, kGap = 10, kX = 228;
-    kpis.forEach((kpi, i) => {
-      const x = kX + (i % 2) * (kW + kGap), y = TOP + Math.floor(i / 2) * (kH + kGap);
-      rr(x, y, kW, kH, 8);
-      ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 28px system-ui,sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(kpi.value, x + kW / 2, y + 38);
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '10px system-ui,sans-serif';
-      ctx.fillText(kpi.label.toUpperCase(), x + kW / 2, y + 58);
-    });
-
-    // Divider 2
-    const d2 = kX + 2 * (kW + kGap) + 14;
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(d2, TOP); ctx.lineTo(d2, H - 28); ctx.stroke();
-
-    // Health factors
-    const fX = d2 + 22, fW = W - fX - 32;
-    healthScore.factors.forEach((f, i) => {
-      const y = TOP + i * 56;
-      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '10px system-ui,sans-serif'; ctx.textAlign = 'left';
-      ctx.fillText(f.label.toUpperCase(), fX, y + 12);
-      ctx.fillStyle = factorColor(f.score); ctx.font = 'bold 15px system-ui,sans-serif';
-      ctx.fillText(f.value, fX, y + 30);
-      rr(fX, y + 36, fW, 3, 2); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill();
-      rr(fX, y + 36, Math.max(4, fW * f.score / 100), 3, 2);
-      ctx.fillStyle = factorColor(f.score); ctx.fill();
-    });
-
-    // Footer
-    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.font = '10px system-ui,sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Generated by VelocityMAX · ' + new Date().toLocaleString(), W / 2, H - 10);
-
-    const dataUrl = canvas.toDataURL('image/png');
-    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-      // iOS/Android block programmatic downloads — open in new tab so user can long-press to save
-      window.open(dataUrl, '_blank');
-    } else {
-      const a = document.createElement('a');
-      a.download = `velocitymax-${new Date().toISOString().split('T')[0]}.png`;
-      a.href = dataUrl;
-      a.click();
-    }
-  };
-
-  const handleDragStart = (e, id) => {
-    dragItem.current = id;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDrop = (e, targetId) => {
-    e.preventDefault();
-    const sourceId = dragItem.current;
-    if (!sourceId || sourceId === targetId) return;
-    const next = [...chartOrder];
-    const from = next.indexOf(sourceId);
-    const to = next.indexOf(targetId);
-    if (from === -1 || to === -1) return;
-    next.splice(from, 1);
-    next.splice(to, 0, sourceId);
-    setChartOrder(next);
-    localStorage.setItem('vmChartOrder', JSON.stringify(next));
-    dragItem.current = null;
-    setDragOverId(null);
-  };
-
-  const resetChartOrder = () => {
-    setChartOrder(DEFAULT_CHART_ORDER);
-    localStorage.removeItem('vmChartOrder');
-  };
-
-  const chartCardProps = (id, fullWidth = false) => ({
-    className: `glass-card${fullWidth ? ' chart-full-width' : ''}${dragOverId === id ? ' chart-drag-over' : ''}`,
-    draggable: true,
-    onDragStart: e => handleDragStart(e, id),
-    onDragEnter: () => dragItem.current && dragItem.current !== id && setDragOverId(id),
-    onDragOver: e => e.preventDefault(),
-    onDragLeave: e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverId(null); },
-    onDrop: e => handleDrop(e, id),
-    onDragEnd: () => { dragItem.current = null; setDragOverId(null); },
-  });
-
-  const DragHandle = () => (
-    <span className="chart-drag-handle" title="Drag to reorder">⠿</span>
-  );
-
-  const renderChart = (id) => {
-    switch (id) {
-
-      case 'velocity': return (
-        <div key="velocity" {...chartCardProps('velocity')}>
-          <div className="chart-title-row"><div className="chart-title">Weekly Velocity</div><DragHandle /></div>
-          <div className="chart-description">
-            Points delivered (purple bars) and ticket count (red line) per ISO week.
-            The dashed green line is a 4-week rolling average — a rising trend means the team is accelerating.
-            <em> e.g. a bar at 20 pts with 5 tickets = 5 issues completed worth 20 story points that week.</em>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <ComposedChart data={velocityData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                <XAxis dataKey="week" stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis yAxisId="left" stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis yAxisId="right" orientation="right" stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Bar yAxisId="left" dataKey="points" name="Points Completed" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="right" type="monotone" dataKey="count" name="Tickets Completed" stroke="var(--chart-red)" strokeWidth={3} dot={{ r: 4 }} />
-                <Line yAxisId="right" type="monotone" dataKey="rollingAvgCount" name="4-wk Avg (tickets)" stroke="var(--chart-green)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      );
-
-      case 'cycle-compare': {
-        if (cycleComparison.length < 2) return null;
-        return (
-          <div key="cycle-compare" {...chartCardProps('cycle-compare')}>
-            <div className="chart-title-row"><div className="chart-title">Cycle Comparison</div><DragHandle /></div>
-            <div className="chart-description">
-              Last {cycleComparison.length} cycles side by side — points delivered (bars, left axis) and completion rate % (line, right axis).
-              <em> ▶ marks the current active cycle.</em>
-            </div>
-            <div className="chart-wrapper">
-              <ResponsiveContainer width="100%" height={350}>
-                <ComposedChart data={cycleComparison} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                  <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
-                  <YAxis yAxisId="left" stroke="var(--text-secondary)" fontSize={12} />
-                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} stroke="var(--text-secondary)" fontSize={12} tickFormatter={v => `${v}%`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend />
-                  <Bar yAxisId="left" dataKey="points" name="Points" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="left" dataKey="tickets" name="Tickets" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="completionPct" name="Completion %" stroke="var(--chart-green)" strokeWidth={2} dot={{ r: 4 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        );
-      }
-
-      case 'cycle-times': return (
-        <div key="cycle-times" {...chartCardProps('cycle-times')}>
-          <div className="chart-title-row"><div className="chart-title">Issue Cycle Times</div><DragHandle /></div>
-          <div className="chart-description">
-            Each dot is one completed issue — horizontal axis is completion date, vertical axis is days in progress.
-            Red dots spent more than 14 days in progress and may warrant a retro discussion.
-            <em> e.g. a blue dot at 5d on Jan 10 = an issue completed Jan 10 that took 5 days to finish.</em>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                <XAxis type="number" dataKey="completed" name="Date" domain={['dataMin', 'dataMax']}
-                  tickFormatter={tick => new Date(tick).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis type="number" dataKey="cycleTime" name="Cycle Time" stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
-                <Scatter name="Issues" data={cycleTimeData} fill="var(--chart-blue)">
-                  {cycleTimeData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.cycleTime > 14 ? 'var(--chart-red)' : 'var(--chart-blue)'} />
-                  ))}
-                </Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      );
-
-      case 'burnup': return (
-        <div key="burnup" {...chartCardProps('burnup')}>
-          <div className="chart-title-row"><div className="chart-title">Burn-up Chart</div><DragHandle /></div>
-          <div className="chart-description">
-            Tracks total scope (red) and cumulative completed work (green) over the project's life.
-            When the green line meets the red line, all committed scope is done.
-            <em> e.g. red at 100 pts and green at 70 pts = 30 pts still remaining.</em>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <LineChart data={burnupData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Line type="stepAfter" dataKey="totalScope" name="Total Scope" stroke="var(--chart-red)" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="cumulativeCompleted" name="Completed" stroke="var(--chart-green)" strokeWidth={3} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      );
-
-      case 'burndown': {
-        if (!uniqueCycles.length) return null;
-        return (
-          <div key="burndown" {...chartCardProps('burndown')}>
-            <div className="chart-title-row"><div className="chart-title">Sprint Burndown</div><DragHandle /></div>
-            <div className="chart-description">
-              Remaining story points (purple) vs the ideal straight-line burndown (dashed) for a given sprint.
-              Dropping faster than ideal = ahead of schedule; a flat line = blocked work.
-              <em> e.g. remaining at 15 pts on day 5 of a 10-day sprint with 30 pts total = behind the ideal pace of 15 pts remaining.</em>
-            </div>
-            <div className="filter-group" style={{ marginBottom: '1rem' }}>
-              <label>Sprint / Cycle</label>
-              <select
-                value={selectedCycle}
-                onChange={e => setSelectedCycle(e.target.value)}
-                style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)', padding: '0.5rem 0.75rem', fontSize: '0.875rem', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
-              >
-                <option value="">— Select a cycle —</option>
-                {uniqueCycles.map(c => {
-                  const isCurrent = c.number === currentCycleNumber;
-                  const dateRange = c.startsAt && c.endsAt
-                    ? ` · ${new Date(c.startsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${new Date(c.endsAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
-                    : '';
-                  return (
-                    <option key={c.number} value={c.number}>
-                      {isCurrent ? '▶ ' : ''}Cycle {c.number}{isCurrent ? ' (current)' : ''}{dateRange}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-            {sprintBurndownData.length > 0 ? (
-              <div className="chart-wrapper">
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={sprintBurndownData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                    <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-                    <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend />
-                    <Line type="monotone" dataKey="remaining" name="Remaining" stroke="var(--chart-purple)" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="ideal" name="Ideal" stroke="var(--text-secondary)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>No point data for this cycle.</p>
-            )}
-          </div>
-        );
-      }
-
-      case 'lead-time': return (
-        <div key="lead-time" {...chartCardProps('lead-time')}>
-          <div className="chart-title-row"><div className="chart-title">Lead Time Distribution</div><DragHandle /></div>
-          <div className="chart-description">
-            Time from issue creation to completion, grouped into buckets.
-            A tall bar on the left = most issues are delivered quickly; a tail on the right = some issues linger.
-            <em> e.g. a tall "3–7d" bar means the majority of issues are shipped within a week of being opened.</em>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={leadTimeHistogram} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="count" name="Issues" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      );
-
-      case 'flow-efficiency': return (
-        <div key="flow-efficiency" {...chartCardProps('flow-efficiency')}>
-          <div className="chart-title-row"><div className="chart-title">Flow Efficiency</div><DragHandle /></div>
-          <div className="chart-description">
-            Ratio of active work time (cycle time) to total elapsed time (lead time).
-            Higher = less waiting. World-class teams typically reach 40–60%.
-            <em> e.g. 30% means only 30% of an issue's lifetime was active development — 70% was idle/waiting.</em>
-          </div>
-          {flowEfficiency ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                <div style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: '12px', padding: '0.5rem 1.25rem', fontSize: '1.5rem', fontWeight: 700, color: '#a5b4fc' }}>
-                  {flowEfficiency.avg}%
-                </div>
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>avg flow efficiency</span>
-              </div>
-              <div className="chart-wrapper" style={{ height: 260 }}>
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={flowEfficiency.distribution} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                    <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={12} />
-                    <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="count" name="Issues" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </>
-          ) : (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>
-              Not enough data. Requires issues with both cycle time and lead time.
-            </p>
-          )}
-        </div>
-      );
-
-      case 'status-breakdown': return (
-        <div key="status-breakdown" {...chartCardProps('status-breakdown')}>
-          <div className="chart-title-row"><div className="chart-title">Time Spent in Each Status</div><DragHandle /></div>
-          <div className="chart-description">
-            Average and median days issues spend in each workflow state. Click chips to show/hide states.
-            Large gaps between avg and median suggest a few outliers are skewing the average.
-            <em> e.g. "In Review" avg=4d, median=1d means most reviews are fast but a few linger and pull the average up.</em>
-            {loadingHistory && (
-              <span className="history-badge" style={{ marginLeft: '0.5rem' }}>
-                ⟳ {historyProgress.done}/{historyProgress.total} loaded
-              </span>
-            )}
-          </div>
-          <div className="status-toggle-bar">
-            {allStatuses.map(s => (
-              <button key={s} className={`status-chip ${selectedStatuses.includes(s) ? 'active' : ''}`} onClick={() => toggleStatus(s)}>{s}</button>
-            ))}
-          </div>
-          {allStatuses.length === 0 && !loadingHistory && (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '1rem 0' }}>
-              Status breakdown requires history data. It loads automatically after issues are fetched.
-            </p>
-          )}
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart layout="vertical" data={statusBreakdownData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
-                <XAxis type="number" stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis dataKey="status" type="category" width={100} stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Bar dataKey="avg" name="Avg Days" fill="var(--chart-purple)" radius={[0, 4, 4, 0]} />
-                <Bar dataKey="median" name="Median Days" fill="var(--chart-green)" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      );
-
-      case 'cfd': return (
-        <div key="cfd" {...chartCardProps('cfd', true)}>
-          <div className="chart-title-row"><div className="chart-title">Cumulative Flow Diagram</div><DragHandle /></div>
-          <div className="chart-description">
-            Weekly snapshot of how many issues sit in each phase. A healthy team shows a steady rise in Done and a stable In Progress band.
-            A widening "In Progress" band signals work piling up faster than it exits — a bottleneck.
-            <em> e.g. In Progress growing from 5 to 20 over 4 weeks while Done barely moves = WIP overload.</em>
-          </div>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height={350}>
-              <AreaChart data={cumulativeFlowData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-                <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Area type="monotone" dataKey="Cancelled" stackId="1" stroke="var(--chart-red)" fill="var(--chart-red)" fillOpacity={0.4} />
-                <Area type="monotone" dataKey="Done" stackId="1" stroke="var(--chart-green)" fill="var(--chart-green)" fillOpacity={0.4} />
-                <Area type="monotone" dataKey="In Progress" stackId="1" stroke="var(--chart-purple)" fill="var(--chart-purple)" fillOpacity={0.4} />
-                <Area type="monotone" dataKey="Backlog" stackId="1" stroke="var(--text-secondary)" fill="#64748b" fillOpacity={0.4} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      );
-
-      case 'prediction': {
-        if (!predictionResult) return null;
-        return (
-          <div key="prediction" {...chartCardProps('prediction', true)}>
-            <div className="chart-title-row"><div className="chart-title">Scope Prediction</div><DragHandle /></div>
-            <div className="chart-description">
-              The blue line shows actual remaining points to date. Dashed lines project when the backlog reaches zero based on the last 4 weeks of velocity.
-              The three scenarios use the best week (optimistic), average, and worst week (pessimistic) from that window.
-              <em> e.g. if pessimistic shows June and optimistic shows March, plan around April–May.</em>
-            </div>
-            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-              <div><span style={{ color: 'var(--chart-green)', fontWeight: 600 }}>Optimistic: </span><span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.optimistic}</span></div>
-              <div><span style={{ color: 'var(--chart-purple)', fontWeight: 600 }}>Avg: </span><span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.avg}</span></div>
-              <div><span style={{ color: 'var(--chart-red)', fontWeight: 600 }}>Pessimistic: </span><span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.completionDates.pessimistic}</span></div>
-              <div><span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{predictionResult.remaining} pts remaining</span></div>
-            </div>
-            <div className="chart-wrapper">
-              <ResponsiveContainer width="100%" height={350}>
-                <LineChart data={predictionResult.chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                  <XAxis dataKey="date" tickFormatter={t => new Date(t).toLocaleDateString()} stroke="var(--text-secondary)" fontSize={12} />
-                  <YAxis stroke="var(--text-secondary)" fontSize={12} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend />
-                  <Line type="monotone" dataKey="actual" name="Actual Remaining" stroke="var(--chart-blue)" strokeWidth={2} dot={false} connectNulls={false} />
-                  <Line type="monotone" dataKey="avg" name="Avg Forecast" stroke="var(--chart-purple)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
-                  <Line type="monotone" dataKey="optimistic" name="Optimistic" stroke="var(--chart-green)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
-                  <Line type="monotone" dataKey="pessimistic" name="Pessimistic" stroke="var(--chart-red)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        );
-      }
-
-      case 'issues': return (
-        <div key="issues" {...chartCardProps('issues', true)}>
-          <div className="chart-title-row"><div className="chart-title">Issues</div><DragHandle /></div>
-          <IssuesTable issues={filteredIssues} />
-        </div>
-      );
-
-      default: return null;
-    }
+  const snapshotMetrics = {
+    totalIssues: metrics.totalIssues,
+    completedIssues: metrics.completedIssues,
+    totalPoints: metrics.totalPoints,
+    avgCycleTime: metrics.avgCycleTime,
   };
 
   return (
     <>
-      {showSettings && (
-        <SettingsModal
-          apiKey={apiKey}
-          everhourApiKey={everhourApiKey}
+      {showSettings ? <SettingsModal apiKey={apiKey} everhourApiKey={everhourApiKey} presets={presets} onSave={saveSettings} onClose={closeSettings} initialAdd={settingsAddPreset} /> : null}
+      <div className="app-container-v2">
+        <DashboardHeader
           presets={presets}
-          onSave={handleSaveSettings}
-          onClose={() => setShowSettings(false)}
+          activePresetId={activePresetId}
+          onSelectPreset={selectPreset}
+          onAddPreset={() => openSettings(true)}
+          onSettings={() => openSettings(false)}
+          onSignOut={signOut}
+          onRefresh={dashboard.refresh}
+          refreshing={dashboard.refreshing}
+          data={dashboard.data}
+          loadingHistory={dashboard.loadingHistory}
+          historyProgress={dashboard.historyProgress}
+          autoRefreshInterval={autoRefreshInterval}
+          onAutoRefreshChange={value => { setAutoRefreshInterval(value); localStorage.setItem('vmAutoRefresh', value); }}
         />
-      )}
-      <div className="app-container">
-
-      {/* ─── Header ─── */}
-      <div className="header">
-        {/* Preset bar + settings button on one row */}
-        <div className="preset-bar">
-          {presets.map(p => (
-            <button
-              key={p.id}
-              className={`preset-btn${activePresetId === p.id ? ' active' : ''}`}
-              onClick={() => selectPreset(p.id)}
-            >
-              {p.name}
-            </button>
-          ))}
-          <button
-            className="preset-btn preset-btn-add"
-            onClick={() => setShowSettings(true)}
-            title="Manage presets"
-          >
-            + Preset
-          </button>
-          <button
-            className="btn-icon"
-            style={{ marginLeft: 'auto' }}
-            onClick={() => setShowSettings(true)}
-            title="Settings"
-          >
-            ⚙
-          </button>
-          <button
-            className="btn-icon"
-            onClick={handleSignOut}
-            title="Sign out"
-            style={{ fontSize: '0.8rem' }}
-          >
-            ⏻
-          </button>
-        </div>
-
-        {data && (
-          <p className="header-meta">
-            {data.team && <>Team: <strong>{data.team}</strong> · </>}
-            Updated: {new Date(data.lastUpdated).toLocaleString()}
-            {loadingHistory && (
-              <span className="history-badge">
-                ⟳ Loading status data ({historyProgress.done}/{historyProgress.total})
-              </span>
-            )}
-          </p>
-        )}
+        <main className="dashboard-main-v2">
+          {dashboard.error ? <div className="inline-warning" role="status"><AlertTriangle size={15} aria-hidden="true" />Refresh failed: {dashboard.error}. Existing data is still shown.</div> : null}
+          {dashboard.historyWarning ? <div className="inline-warning" role="status"><AlertTriangle size={15} aria-hidden="true" />{dashboard.historyWarning}</div> : null}
+          <DashboardFilters filters={filters} onSaveDefaults={saveFilterDefaults} canSaveDefaults={Boolean(activePreset)} />
+          <BudgetOverview budgetData={dashboard.budgetData} error={dashboard.budgetError} configured={Boolean(activePreset?.everhourProjectIds?.length)} />
+          <KpiGrid totalIssues={metrics.totalIssues} completedIssues={metrics.completedIssues} totalPoints={metrics.totalPoints} completedPoints={metrics.completedPoints} avgCycleTime={metrics.avgCycleTime} medianCycleTime={metrics.medianCycleTime} />
+          <HealthScore healthScore={metrics.healthScore} presetName={activePreset?.name} team={dashboard.data?.team} metrics={snapshotMetrics} />
+          {!filters.filteredIssues.length ? <section className="dashboard-empty-state"><h2>No issues in this scope</h2><p>Adjust the filters or choose another preset. Charts that can render empty datasets remain available below.</p></section> : null}
+          <DashboardCharts metrics={metrics} issues={filters.filteredIssues} selectedStatuses={filters.selectedStatuses} setSelectedStatuses={filters.setSelectedStatuses} loadingHistory={dashboard.loadingHistory} historyProgress={dashboard.historyProgress} />
+        </main>
       </div>
-
-      {/* ─── Filter Bar ─── */}
-      <div className="glass-card filter-bar">
-        <div className="filter-bar-inner">
-          <div className="filter-group">
-            <label htmlFor="filter-project">Project</label>
-            <select id="filter-project" value={selectedProject} onChange={e => setSelectedProject(e.target.value)}>
-              <option value="All">All Projects</option>
-              {uniqueProjects.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </div>
-          <div className="filter-group">
-            <label htmlFor="filter-assignee">Assignee</label>
-            <select id="filter-assignee" value={selectedAssignee} onChange={e => setSelectedAssignee(e.target.value)}>
-              <option value="All">All Assignees</option>
-              {uniqueAssignees.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-          {uniqueCurrentStatuses.length > 0 && (
-            <div className="filter-group">
-              <label>Status</label>
-              <MultiSelectDropdown
-                options={uniqueCurrentStatuses}
-                selected={selectedCurrentStatuses}
-                onChange={setSelectedCurrentStatuses}
-                placeholder="All Statuses"
-              />
-            </div>
-          )}
-          <div className="filter-group">
-            <label>Date Range</label>
-            <div className="quick-range-btns">
-              <button className="quick-range-btn" onClick={() => applyQuickRange('30d')}>30d</button>
-              <button className="quick-range-btn" onClick={() => applyQuickRange('90d')}>90d</button>
-              <button className="quick-range-btn" onClick={() => applyQuickRange('quarter')}>Quarter</button>
-              <button className="quick-range-btn" onClick={() => applyQuickRange('all')}>All</button>
-            </div>
-          </div>
-          <div className="filter-group">
-            <label htmlFor="filter-from">From</label>
-            <input id="filter-from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-          </div>
-          <div className="filter-group">
-            <label htmlFor="filter-to">To</label>
-            <input id="filter-to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-          </div>
-          <div className="filter-group">
-            <label htmlFor="auto-refresh">Auto-refresh</label>
-            <select id="auto-refresh" value={autoRefreshInterval} onChange={e => {
-              setAutoRefreshInterval(e.target.value);
-              localStorage.setItem('vmAutoRefresh', e.target.value);
-            }}>
-              <option value="off">Off</option>
-              <option value="5m">5 min</option>
-              <option value="15m">15 min</option>
-              <option value="30m">30 min</option>
-            </select>
-          </div>
-          <div className="filter-group">
-            <button className="btn-secondary" onClick={resetFilters}>Reset</button>
-          </div>
-          {activePreset && (
-            <div className="filter-group">
-              <button className="btn-secondary" onClick={handleSaveFiltersToPreset} title="Save current filters as default for this preset">
-                ★ Save Filters
-              </button>
-            </div>
-          )}
-          <div className="filter-group">
-            <button
-              className="btn-secondary"
-              onClick={() => loadPresetData(activePreset, apiKey)}
-              title="Re-fetch data from Linear"
-            >
-              ↻ Refresh
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Budget Overview ─── */}
-      {budgetData?.length > 0 && (
-        <div className="glass-card budget-card">
-          <div className="chart-title">Budget Overview</div>
-          <div className="chart-description">Everhour budget consumption per project.</div>
-          <table className="budget-table">
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Consumed</th>
-                <th>Budget</th>
-                <th style={{ minWidth: 200 }}>% Used</th>
-              </tr>
-            </thead>
-            <tbody>
-              {budgetData.map(p => {
-                const pct = p.percentUsed ?? 0;
-                const barColor = pct > 90 ? 'var(--chart-red)' : pct > 75 ? '#f59e0b' : 'var(--chart-green)';
-                return (
-                  <tr key={p.id}>
-                    <td>{p.name}</td>
-                    <td>{p.consumedDisplay ?? '—'}</td>
-                    <td>{p.budgetDisplay ?? '—'}</td>
-                    <td>
-                      {p.percentUsed != null ? (
-                        <div className="budget-progress-cell">
-                          <div className="budget-bar">
-                            <div
-                              className="budget-bar-fill"
-                              style={{ width: `${Math.min(100, pct)}%`, background: barColor }}
-                            />
-                          </div>
-                          <span className="budget-pct" style={{ color: barColor }}>{pct}%</span>
-                        </div>
-                      ) : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* ─── KPI Cards ─── */}
-      <div className="kpi-grid">
-        <div className="glass-card kpi-card">
-          <div className="kpi-value">{totalIssues}</div>
-          <div className="kpi-label">Total Issues</div>
-        </div>
-        <div className="glass-card kpi-card">
-          <div className="kpi-value">{completedIssues}</div>
-          <div className="kpi-label">Completed</div>
-        </div>
-        <div className="glass-card kpi-card">
-          <div className="kpi-value">{totalPoints}</div>
-          <div className="kpi-label">Total Points</div>
-        </div>
-        <div className="glass-card kpi-card">
-          <div className="kpi-value">{avgCycleTime}</div>
-          <div className="kpi-label">Avg Cycle Time (days)</div>
-        </div>
-      </div>
-
-      {/* ─── Health Score ─── */}
-      {healthScore && (() => {
-        const grade = getHealthGrade(healthScore.overall);
-        return (
-          <div className="glass-card health-card">
-            <div className="health-inner">
-              <div className="health-score-section">
-                <div className="health-score-circle" style={{ borderColor: grade.color }}>
-                  <span className="health-score-number" style={{ color: grade.color }}>{healthScore.overall}</span>
-                  <span className="health-score-sub">/ 100</span>
-                </div>
-                <div>
-                  <div className="health-grade" style={{ color: grade.color }}>{grade.grade}</div>
-                  <div className="health-grade-label">{grade.label}</div>
-                </div>
-              </div>
-              <div className="health-divider" />
-              <div className="health-factors">
-                {healthScore.factors.map(f => (
-                  <div key={f.key} className="health-factor">
-                    <div className="health-factor-label">{f.label}</div>
-                    <div className="health-factor-value" style={{ color: factorColor(f.score) }}>{f.value}</div>
-                    <div className="health-factor-bar">
-                      <div style={{ width: `${f.score}%`, background: factorColor(f.score) }} />
-                    </div>
-                    <div className="health-factor-status" style={{ color: factorColor(f.score) }}>{factorStatus(f.score)}</div>
-                  </div>
-                ))}
-              </div>
-              <button
-                className="health-export-btn"
-                onClick={exportSnapshot}
-                title="Export as PNG"
-              >
-                ↓ PNG
-              </button>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ─── Charts ─── */}
-      <div className="charts-grid">
-        {chartOrder.map(id => renderChart(id))}
-      </div>
-      {JSON.stringify(chartOrder) !== JSON.stringify(DEFAULT_CHART_ORDER) && (
-        <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
-          <button className="btn-secondary" style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }} onClick={resetChartOrder}>
-            ↺ Reset chart order
-          </button>
-        </div>
-      )}
-    </div>
     </>
   );
 }

@@ -1,220 +1,157 @@
-// Pure computation functions for chart data — no React dependencies.
+function validDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
-function getISOWeekLabel(dateStr) {
-  const input = new Date(dateStr);
+function getISOWeekLabel(dateValue) {
+  const input = validDate(dateValue);
+  if (!input) return '';
   const d = new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()));
   const day = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - day);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  return d.getUTCFullYear() + '-W' + (weekNo < 10 ? '0' : '') + weekNo;
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
 
-function getISOWeekStart(dateStr) {
-  const input = new Date(dateStr);
+function getISOWeekStart(dateValue) {
+  const input = validDate(dateValue);
+  if (!input) return null;
   const d = new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()));
   const day = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() - day + 1);
   return d;
 }
 
-/**
- * Same as the velocityData useMemo in App.jsx but adds `rollingAvgCount`
- * (rolling 4-week average of ticket count) to each week object.
- */
-export function computeVelocityWithTrend(filteredIssues, asOfDate) {
-  const completed = filteredIssues.filter(i =>
-    i.completedAt && !Number.isNaN(new Date(i.completedAt).getTime())
-  );
+export function computeVelocityWithTrend(issues, asOfDate) {
+  const completed = issues.filter(issue => validDate(issue.completedAt));
   if (!completed.length) return [];
-
-  const latestCompleted = completed.reduce((latest, issue) =>
-    new Date(issue.completedAt) > latest ? new Date(issue.completedAt) : latest,
-    new Date(0)
-  );
-  const requestedEnd = asOfDate ? new Date(asOfDate) : latestCompleted;
-  const endDate = Number.isNaN(requestedEnd.getTime()) ? latestCompleted : requestedEnd;
-  const earliestCompleted = completed.reduce((earliest, issue) =>
-    new Date(issue.completedAt) < earliest ? new Date(issue.completedAt) : earliest,
-    new Date(completed[0].completedAt)
-  );
-  const effectiveEndDate = endDate < latestCompleted ? latestCompleted : endDate;
-  const cursor = getISOWeekStart(earliestCompleted);
-  const endWeek = getISOWeekStart(effectiveEndDate);
+  const completedDates = completed.map(issue => new Date(issue.completedAt));
+  const earliest = new Date(Math.min(...completedDates));
+  const latest = new Date(Math.max(...completedDates));
+  const requestedEnd = validDate(asOfDate) || latest;
+  const effectiveEnd = requestedEnd < latest ? latest : requestedEnd;
+  const cursor = getISOWeekStart(earliest);
+  const endWeek = getISOWeekStart(effectiveEnd);
   const weekMap = {};
 
-  while (cursor <= endWeek) {
+  while (cursor && endWeek && cursor <= endWeek) {
     const week = getISOWeekLabel(cursor);
     weekMap[week] = { week, points: 0, count: 0 };
     cursor.setUTCDate(cursor.getUTCDate() + 7);
   }
 
-  completed.forEach(p => {
-    const week = getISOWeekLabel(p.completedAt);
-    weekMap[week].points += p.points || 0;
+  completed.forEach(issue => {
+    const week = getISOWeekLabel(issue.completedAt);
+    if (!weekMap[week]) weekMap[week] = { week, points: 0, count: 0 };
+    weekMap[week].points += Number(issue.points) || 0;
     weekMap[week].count += 1;
   });
+
   const sorted = Object.values(weekMap).sort((a, b) => a.week.localeCompare(b.week));
-  return sorted.map((entry, idx) => {
-    const window = sorted.slice(Math.max(0, idx - 3), idx + 1);
-    const rollingAvgCount = Math.round(
-      (window.reduce((s, w) => s + w.count, 0) / window.length) * 10
-    ) / 10;
-    return { ...entry, rollingAvgCount };
+  return sorted.map((entry, index) => {
+    const window = sorted.slice(Math.max(0, index - 3), index + 1);
+    const rollingAvgCount = Math.round((window.reduce((sum, week) => sum + week.count, 0) / window.length) * 10) / 10;
+    const rollingAvgPoints = Math.round((window.reduce((sum, week) => sum + week.points, 0) / window.length) * 10) / 10;
+    return { ...entry, rollingAvgCount, rollingAvgPoints };
   });
 }
 
-/**
- * Bucket completed issues (leadTimeDays != null) into named ranges.
- * Returns array of { label, count }.
- */
-export function computeLeadTimeHistogram(filteredIssues) {
+export function computeLeadTimeHistogram(issues) {
   const buckets = [
-    { label: '≤3d', min: 0, max: 3 },
-    { label: '3–7d', min: 3, max: 7 },
-    { label: '1–2w', min: 7, max: 14 },
-    { label: '2–4w', min: 14, max: 30 },
-    { label: '>30d', min: 30, max: Infinity },
+    { label: '≤3d', test: days => days <= 3 },
+    { label: '3–7d', test: days => days > 3 && days <= 7 },
+    { label: '1–2w', test: days => days > 7 && days <= 14 },
+    { label: '2–4w', test: days => days > 14 && days <= 30 },
+    { label: '>30d', test: days => days > 30 },
   ];
-  const counts = buckets.map(b => ({ label: b.label, count: 0 }));
-  filteredIssues.forEach(i => {
-    if (i.leadTimeDays == null) return;
-    const days = i.leadTimeDays;
-    const idx = buckets.findIndex(b => days >= b.min && days < b.max);
-    if (idx !== -1) counts[idx].count++;
+  const counts = buckets.map(bucket => ({ label: bucket.label, count: 0 }));
+  issues.forEach(issue => {
+    const days = Number(issue.leadTimeDays);
+    if (!Number.isFinite(days) || days < 0) return;
+    const index = buckets.findIndex(bucket => bucket.test(days));
+    if (index >= 0) counts[index].count += 1;
   });
   return counts;
 }
 
-/**
- * Build a daily burndown array for a given cycle.
- * Returns array of { date, remaining, ideal } or [] if no matching issues.
- */
-export function computeSprintBurndown(allIssues, cycleNumber) {
+export function computeSprintBurndown(issues, cycleNumber) {
   if (!cycleNumber) return [];
-  const sprintIssues = allIssues.filter(i => String(i.cycleNumber) === String(cycleNumber));
+  const sprintIssues = issues.filter(issue => String(issue.cycleNumber) === String(cycleNumber));
   if (!sprintIssues.length) return [];
-
-  // Determine the sprint window from cycle metadata. Older cached snapshots may
-  // lack that metadata, so fall back to the observed issue lifetime instead of
-  // silently hiding the chart.
-  const toValidTime = value => {
-    const time = value ? new Date(value).getTime() : NaN;
-    return Number.isNaN(time) ? null : time;
-  };
-  const starts = sprintIssues.map(i => toValidTime(i.cycleStartsAt)).filter(Boolean);
-  const ends = sprintIssues.map(i => toValidTime(i.cycleEndsAt)).filter(Boolean);
-  const observed = sprintIssues.flatMap(i => [i.createdAt, i.startedAt, i.completedAt, i.canceledAt])
-    .map(toValidTime)
-    .filter(Boolean);
-  if (!observed.length && (!starts.length || !ends.length)) return [];
-
+  const timestamps = values => values.map(value => validDate(value)?.getTime()).filter(Number.isFinite);
+  const starts = timestamps(sprintIssues.map(issue => issue.cycleStartsAt));
+  const ends = timestamps(sprintIssues.map(issue => issue.cycleEndsAt));
+  const observed = timestamps(sprintIssues.flatMap(issue => [issue.createdAt, issue.startedAt, issue.completedAt, issue.canceledAt]));
+  if ((!starts.length || !ends.length) && !observed.length) return [];
   const startTime = starts.length ? Math.min(...starts) : Math.min(...observed);
   const endTime = ends.length ? Math.max(...ends) : Math.max(...observed);
   const start = new Date(startTime);
   const end = new Date(Math.max(startTime, endTime));
   const sprintStart = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
   const sprintEnd = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
-
-  const totalPoints = sprintIssues.reduce((s, i) => s + (i.points || 0), 0);
-  if (totalPoints === 0) return [];
+  const totalPoints = sprintIssues.reduce((sum, issue) => sum + (Number(issue.points) || 0), 0);
+  if (totalPoints <= 0) return [];
 
   const msPerDay = 86400000;
-  const days = Math.ceil((sprintEnd - sprintStart) / msPerDay) + 1;
-  const result = [];
-
-  for (let d = 0; d < days; d++) {
-    const date = new Date(sprintStart.getTime() + d * msPerDay);
+  const dayCount = Math.floor((sprintEnd - sprintStart) / msPerDay) + 1;
+  return Array.from({ length: dayCount }, (_, index) => {
+    const date = new Date(sprintStart.getTime() + index * msPerDay);
     const dayEnd = new Date(date.getTime() + msPerDay - 1);
-    const dateStr = date.toISOString().split('T')[0];
-    const completedByDay = sprintIssues.reduce((s, i) => {
-      if (i.completedAt && new Date(i.completedAt) <= dayEnd) return s + (i.points || 0);
-      return s;
+    const completedPoints = sprintIssues.reduce((sum, issue) => {
+      const completed = validDate(issue.completedAt);
+      return completed && completed <= dayEnd ? sum + (Number(issue.points) || 0) : sum;
     }, 0);
-    const remaining = Math.max(0, totalPoints - completedByDay);
-    const ideal = days > 1
-      ? Math.round(totalPoints * (1 - d / (days - 1)) * 10) / 10
-      : 0;
-    result.push({ date: dateStr, remaining, ideal });
-  }
-
-  return result;
+    return {
+      date: date.toISOString().split('T')[0],
+      remaining: Math.max(0, totalPoints - completedPoints),
+      ideal: dayCount > 1 ? Math.round(totalPoints * (1 - index / (dayCount - 1)) * 10) / 10 : 0,
+    };
+  });
 }
 
-/**
- * Weekly sample of issues in each simplified phase.
- * Returns array of { date, Backlog, 'In Progress', Done, Cancelled }.
- */
-export function computeCumulativeFlow(filteredIssues, asOfDate) {
-  if (!filteredIssues.length) return [];
-
-  const dates = filteredIssues.map(i => new Date(i.createdAt));
-  const minDate = new Date(Math.min(...dates));
-  const requestedEnd = asOfDate ? new Date(asOfDate) : new Date();
-  const maxDate = Number.isNaN(requestedEnd.getTime()) ? new Date() : requestedEnd;
-
-  // Snap to Monday of that week
+export function computeCumulativeFlow(issues, asOfDate) {
+  const withCreated = issues.filter(issue => validDate(issue.createdAt));
+  if (!withCreated.length) return [];
+  const minDate = new Date(Math.min(...withCreated.map(issue => new Date(issue.createdAt))));
+  const requestedEnd = validDate(asOfDate) || new Date();
+  const latestIssueDate = new Date(Math.max(...withCreated.flatMap(issue => [issue.createdAt, issue.completedAt, issue.canceledAt]
+    .map(value => validDate(value)?.getTime()).filter(Number.isFinite))));
+  const maxDate = requestedEnd < latestIssueDate ? latestIssueDate : requestedEnd;
   const startDate = new Date(minDate);
   startDate.setHours(0, 0, 0, 0);
   startDate.setDate(startDate.getDate() - ((startDate.getDay() + 6) % 7));
 
   const result = [];
-  const msPerWeek = 7 * 86400000;
-  let cursor = new Date(startDate);
-
-  while (cursor <= maxDate) {
+  for (let cursor = new Date(startDate); cursor <= maxDate; cursor = new Date(cursor.getTime() + 7 * 86400000)) {
     const snap = new Date(cursor);
-    let Backlog = 0, InProgress = 0, Done = 0, Cancelled = 0;
-
-    filteredIssues.forEach(i => {
-      const created = new Date(i.createdAt);
-      if (created > snap) return; // not yet created
-
-      const completed = i.completedAt ? new Date(i.completedAt) : null;
-      const cancelled = i.canceledAt ? new Date(i.canceledAt) : null;
-      const started = i.startedAt ? new Date(i.startedAt) : null;
-
-      if (completed && completed <= snap) {
-        Done++;
-      } else if (cancelled && cancelled <= snap) {
-        Cancelled++;
-      } else if (started && started <= snap) {
-        InProgress++;
-      } else {
-        Backlog++;
-      }
+    let Backlog = 0; let InProgress = 0; let Done = 0; let Cancelled = 0;
+    withCreated.forEach(issue => {
+      const created = validDate(issue.createdAt);
+      if (!created || created > snap) return;
+      const completed = validDate(issue.completedAt);
+      const cancelled = validDate(issue.canceledAt);
+      const started = validDate(issue.startedAt);
+      if (completed && completed <= snap) Done += 1;
+      else if (cancelled && cancelled <= snap) Cancelled += 1;
+      else if (started && started <= snap) InProgress += 1;
+      else Backlog += 1;
     });
-
-    result.push({
-      date: snap.toISOString().split('T')[0],
-      Backlog,
-      'In Progress': InProgress,
-      Done,
-      Cancelled,
-    });
-
-    cursor = new Date(cursor.getTime() + msPerWeek);
+    result.push({ date: snap.toISOString().split('T')[0], Backlog, 'In Progress': InProgress, Done, Cancelled });
   }
-
   return result;
 }
 
-/**
- * Flow efficiency for completed issues.
- * Returns { avg, distribution } or null if no data.
- */
-export function computeFlowEfficiency(filteredIssues) {
-  const eligible = filteredIssues.filter(
-    i => i.completedAt && i.cycleTimeDays > 0 && i.leadTimeDays > 0
-  );
-  if (!eligible.length) return null;
-
-  const efficiencies = eligible.map(i =>
-    Math.round((i.cycleTimeDays / i.leadTimeDays) * 100)
-  );
-
-  const avg = Math.round(efficiencies.reduce((s, e) => s + e, 0) / efficiencies.length);
-
+export function computeFlowEfficiency(issues) {
+  const efficiencies = issues.flatMap(issue => {
+    const cycle = Number(issue.cycleTimeDays);
+    const lead = Number(issue.leadTimeDays);
+    if (!Number.isFinite(cycle) || !Number.isFinite(lead) || cycle < 0 || lead <= 0) return [];
+    return [Math.max(0, Math.min(100, Math.round((cycle / lead) * 100)))];
+  });
+  if (!efficiencies.length) return null;
+  const avg = Math.round(efficiencies.reduce((sum, value) => sum + value, 0) / efficiencies.length);
   const bucketDefs = [
     { label: '0–20%', min: 0, max: 20 },
     { label: '20–40%', min: 20, max: 40 },
@@ -222,103 +159,78 @@ export function computeFlowEfficiency(filteredIssues) {
     { label: '60–80%', min: 60, max: 80 },
     { label: '80–100%', min: 80, max: 101 },
   ];
-  const distribution = bucketDefs.map(b => ({
-    label: b.label,
-    count: efficiencies.filter(e => e >= b.min && e < b.max).length,
+  const distribution = bucketDefs.map(bucket => ({
+    label: bucket.label,
+    count: efficiencies.filter(value => value >= bucket.min && value < bucket.max).length,
   }));
-
   return { avg, distribution };
 }
 
-/**
- * Scope prediction based on velocity.
- * Returns { chartData, remaining, completionDates } or null.
- */
-export function computePrediction(filteredIssues, velocityData) {
-  if (!filteredIssues.length || !velocityData.length) return null;
-
-  const totalPoints = filteredIssues.reduce((s, i) => s + (i.points || 0), 0);
-  const completedPoints = filteredIssues
-    .filter(i => i.completedAt)
-    .reduce((s, i) => s + (i.points || 0), 0);
-  const remaining = totalPoints - completedPoints;
-
-  const last4 = velocityData.slice(-4).map(w => w.points);
+export function computePrediction(issues, velocityData, asOfDate = new Date()) {
+  if (!issues.length || !velocityData.length) return null;
+  const totalPoints = issues.reduce((sum, issue) => sum + (Number(issue.points) || 0), 0);
+  const completedPoints = issues.filter(issue => issue.completedAt)
+    .reduce((sum, issue) => sum + (Number(issue.points) || 0), 0);
+  const remaining = Math.max(0, totalPoints - completedPoints);
+  const last4 = velocityData.slice(-4).map(week => Number(week.points) || 0);
   if (!last4.length) return null;
 
-  const avgVelocity = Math.max(0.1, last4.reduce((s, v) => s + v, 0) / last4.length);
+  const avgVelocity = Math.max(0.1, last4.reduce((sum, value) => sum + value, 0) / last4.length);
   const optimisticVelocity = Math.max(0.1, Math.max(...last4));
-  const pessimisticVelocity = Math.max(0.1, Math.min(...last4));
-
-  // Build historical remaining scope (daily)
-  const sorted = [...filteredIssues].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const nonZero = last4.filter(value => value > 0);
+  const pessimisticVelocity = Math.max(0.1, nonZero.length ? Math.min(...nonZero) : avgVelocity * 0.5);
   const dailyMap = {};
-  sorted.forEach(issue => {
-    const cd = new Date(issue.createdAt).toISOString().split('T')[0];
-    if (!dailyMap[cd]) dailyMap[cd] = { created: 0, completed: 0 };
-    dailyMap[cd].created += issue.points || 0;
-    if (issue.completedAt) {
-      const dd = new Date(issue.completedAt).toISOString().split('T')[0];
-      if (!dailyMap[dd]) dailyMap[dd] = { created: 0, completed: 0 };
-      dailyMap[dd].completed += issue.points || 0;
+  issues.forEach(issue => {
+    const created = validDate(issue.createdAt);
+    if (!created) return;
+    const createdKey = created.toISOString().split('T')[0];
+    dailyMap[createdKey] ||= { created: 0, completed: 0 };
+    dailyMap[createdKey].created += Number(issue.points) || 0;
+    const completed = validDate(issue.completedAt);
+    if (completed) {
+      const completedKey = completed.toISOString().split('T')[0];
+      dailyMap[completedKey] ||= { created: 0, completed: 0 };
+      dailyMap[completedKey].completed += Number(issue.points) || 0;
     }
   });
 
-  let cumCreated = 0, cumCompleted = 0;
-  const historical = Object.keys(dailyMap).sort().map(d => {
-    cumCreated += dailyMap[d].created;
-    cumCompleted += dailyMap[d].completed;
-    return { date: d, actual: cumCreated - cumCompleted };
+  let cumulativeCreated = 0; let cumulativeCompleted = 0;
+  const historical = Object.keys(dailyMap).sort().map(date => {
+    cumulativeCreated += dailyMap[date].created;
+    cumulativeCompleted += dailyMap[date].completed;
+    return { date, actual: Math.max(0, cumulativeCreated - cumulativeCompleted) };
   });
 
-  const today = new Date().toISOString().split('T')[0];
-
-  // Build forecast
-  const msPerWeek = 7 * 86400000;
+  const baseDate = validDate(asOfDate) || new Date();
+  const today = new Date(Date.UTC(baseDate.getUTCFullYear(), baseDate.getUTCMonth(), baseDate.getUTCDate()));
   const forecast = [];
-  let remAvg = remaining;
-  let remOpt = remaining;
-  let remPes = remaining;
-
-  for (let week = 0; week <= 52; week++) {
-    const d = new Date(new Date(today).getTime() + week * msPerWeek);
-    const dateStr = d.toISOString().split('T')[0];
+  let remAvg = remaining; let remOpt = remaining; let remPes = remaining;
+  for (let week = 0; week <= 52; week += 1) {
+    const date = new Date(today.getTime() + week * 7 * 86400000).toISOString().split('T')[0];
     forecast.push({
-      date: dateStr,
+      date,
       avg: Math.max(0, Math.round(remAvg * 10) / 10),
       optimistic: Math.max(0, Math.round(remOpt * 10) / 10),
       pessimistic: Math.max(0, Math.round(remPes * 10) / 10),
     });
-    remAvg -= avgVelocity;
-    remOpt -= optimisticVelocity;
-    remPes -= pessimisticVelocity;
+    remAvg -= avgVelocity; remOpt -= optimisticVelocity; remPes -= pessimisticVelocity;
     if (remAvg <= 0 && remOpt <= 0 && remPes <= 0) break;
   }
 
-  // Find completion dates
-  const findCompletionDate = (scenario) => {
-    const entry = forecast.find(f => f[scenario] <= 0);
-    return entry ? new Date(entry.date).toLocaleDateString() : 'Beyond 52 weeks';
+  const completionDate = scenario => {
+    const entry = forecast.find(point => point[scenario] <= 0);
+    return entry ? new Date(`${entry.date}T12:00:00Z`).toLocaleDateString() : 'Beyond 52 weeks';
   };
-
-  const completionDates = {
-    avg: findCompletionDate('avg'),
-    optimistic: findCompletionDate('optimistic'),
-    pessimistic: findCompletionDate('pessimistic'),
+  const chartMap = new Map();
+  historical.forEach(point => chartMap.set(point.date, point));
+  forecast.forEach(point => chartMap.set(point.date, { ...(chartMap.get(point.date) || { date: point.date }), ...point }));
+  return {
+    chartData: [...chartMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    remaining,
+    completionDates: {
+      avg: completionDate('avg'),
+      optimistic: completionDate('optimistic'),
+      pessimistic: completionDate('pessimistic'),
+    },
   };
-
-  // Merge historical and forecast — today's entry gets all 4 fields
-  const chartMap = {};
-  historical.forEach(h => { chartMap[h.date] = { date: h.date, actual: h.actual }; });
-  forecast.forEach(f => {
-    if (chartMap[f.date]) {
-      chartMap[f.date] = { ...chartMap[f.date], ...f };
-    } else {
-      chartMap[f.date] = { ...f };
-    }
-  });
-
-  const chartData = Object.values(chartMap).sort((a, b) => a.date.localeCompare(b.date));
-
-  return { chartData, remaining, completionDates };
 }
