@@ -164,7 +164,7 @@ export default function App() {
   };
 
   if (!isAuthenticated) return <LoginScreen onAuthenticated={authenticate} onDemo={demoLogin} />;
-  if (dashboard.loading && !dashboard.data) return <LoadingScreen presetName={activePreset?.name} />;
+  if (!dashboard.data && !dashboard.error) return <LoadingScreen presetName={activePreset?.name} />;
 
   if (!dashboard.data && dashboard.error) {
     return (
