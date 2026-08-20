@@ -137,4 +137,4 @@ The redesign and reliability roadmap is complete on `ui-redesign-foundations`.
 
 - [x] Pure regression suite passes locally (`12/12`).
 - [x] CI workflow added for lint, unit tests and production build on pull requests.
-- [ ] Final PR review and GitHub CI must pass before merge.
+- [x] Final PR review and GitHub CI passed before merge.
