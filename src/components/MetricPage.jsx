@@ -1,6 +1,6 @@
 import DashboardCharts from './DashboardCharts';
 
-export default function MetricPage({ eyebrow, title, description, chartIds, metrics, issues, selectedStatuses, setSelectedStatuses, loadingHistory, historyProgress }) {
+export default function MetricPage({ eyebrow, title, description, chartIds, metrics, issues, burndownIssues, selectedStatuses, setSelectedStatuses, loadingHistory, historyProgress }) {
   return (
     <div className="metric-page">
       <section className="metric-page-intro">
@@ -11,6 +11,7 @@ export default function MetricPage({ eyebrow, title, description, chartIds, metr
       <DashboardCharts
         metrics={metrics}
         issues={issues}
+        burndownIssues={burndownIssues}
         selectedStatuses={selectedStatuses}
         setSelectedStatuses={setSelectedStatuses}
         loadingHistory={loadingHistory}
