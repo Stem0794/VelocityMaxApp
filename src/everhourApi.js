@@ -33,12 +33,10 @@ export async function fetchEverhourProjects(apiKey) {
 // Fetches each project individually to get complete budget data.
 export async function fetchEverhourBudgets(apiKey, projectIds = []) {
   const projects = await Promise.all(
-    projectIds.map(id =>
-      everhourGet(apiKey, `/projects/${encodeURIComponent(id)}`).catch(() => null)
-    )
+    projectIds.map(id => everhourGet(apiKey, `/projects/${encodeURIComponent(id)}`))
   );
 
-  return projects.filter(Boolean).map(p => {
+  return projects.map(p => {
     const b = p.budget;
 
     if (!b) {
