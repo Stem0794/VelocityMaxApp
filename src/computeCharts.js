@@ -76,6 +76,10 @@ export function computeLeadTimeHistogram(issues) {
   return counts;
 }
 
+function sprintCompletionDate(issue) {
+  return validDate(issue.linearCompletedAt) || validDate(issue.completedAt);
+}
+
 export function computeSprintBurndown(issues, cycleNumber) {
   if (!cycleNumber) return [];
   const sprintIssues = issues.filter(issue => String(issue.cycleNumber) === String(cycleNumber));
@@ -83,7 +87,7 @@ export function computeSprintBurndown(issues, cycleNumber) {
   const timestamps = values => values.map(value => validDate(value)?.getTime()).filter(Number.isFinite);
   const starts = timestamps(sprintIssues.map(issue => issue.cycleStartsAt));
   const ends = timestamps(sprintIssues.map(issue => issue.cycleEndsAt));
-  const observed = timestamps(sprintIssues.flatMap(issue => [issue.createdAt, issue.startedAt, issue.completedAt, issue.canceledAt]));
+  const observed = timestamps(sprintIssues.flatMap(issue => [issue.createdAt, issue.startedAt, issue.linearCompletedAt, issue.completedAt, issue.canceledAt]));
   if ((!starts.length || !ends.length) && !observed.length) return [];
   const startTime = starts.length ? Math.min(...starts) : Math.min(...observed);
   const endTime = ends.length ? Math.max(...ends) : Math.max(...observed);
@@ -100,7 +104,7 @@ export function computeSprintBurndown(issues, cycleNumber) {
     const date = new Date(sprintStart.getTime() + index * msPerDay);
     const dayEnd = new Date(date.getTime() + msPerDay - 1);
     const completedPoints = sprintIssues.reduce((sum, issue) => {
-      const completed = validDate(issue.completedAt);
+      const completed = sprintCompletionDate(issue);
       return completed && completed <= dayEnd ? sum + (Number(issue.points) || 0) : sum;
     }, 0);
     return {
