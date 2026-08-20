@@ -1,5 +1,5 @@
 import { AlertTriangle, RefreshCw, Settings } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import IssuesTable from './IssuesTable';
 import MetricPage from './components/MetricPage';
 import OverviewPage from './components/OverviewPage';
@@ -49,7 +49,7 @@ function LoginScreen({ onAuthenticated, onDemo }) {
     }
   }, [onAuthenticated]);
 
-  useState(() => {
+  useEffect(() => {
     const init = () => {
       const element = document.getElementById('google-signin-btn');
       if (!element || !window.google?.accounts?.id) return;
@@ -58,22 +58,24 @@ function LoginScreen({ onAuthenticated, onDemo }) {
       window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredential });
       window.google.accounts.id.renderButton(element, { theme: 'filled_black', size: 'large', text: 'signin_with', shape: 'rectangular', width });
     };
-    if (window.google?.accounts?.id) init();
-    else {
-      const existing = document.querySelector('script[data-velocitymax-google]');
-      if (existing) existing.addEventListener('load', init, { once: true });
-      else {
-        const script = document.createElement('script');
-        script.src = 'https://accounts.google.com/gsi/client';
-        script.async = true;
-        script.defer = true;
-        script.dataset.velocitymaxGoogle = 'true';
-        script.addEventListener('load', init, { once: true });
-        document.head.appendChild(script);
-      }
+    if (window.google?.accounts?.id) {
+      init();
+      return undefined;
     }
-    return null;
-  });
+    const existing = document.querySelector('script[data-velocitymax-google]');
+    if (existing) {
+      existing.addEventListener('load', init, { once: true });
+      return () => existing.removeEventListener('load', init);
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.velocitymaxGoogle = 'true';
+    script.addEventListener('load', init, { once: true });
+    document.head.appendChild(script);
+    return () => script.removeEventListener('load', init);
+  }, [handleCredential]);
 
   return (
     <main className="login-screen-v2">
@@ -107,6 +109,13 @@ export default function App() {
   const [activePresetId, setActivePresetId] = useState(() => localStorage.getItem('vmActivePreset') || 'demo');
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => localStorage.getItem('vmAutoRefresh') || 'off');
   const activePreset = useMemo(() => resolveActivePreset(presets, activePresetId), [activePresetId, presets]);
+
+  useEffect(() => {
+    if (activePreset && activePreset.id !== activePresetId) {
+      setActivePresetId(activePreset.id);
+      localStorage.setItem('vmActivePreset', activePreset.id);
+    }
+  }, [activePreset, activePresetId]);
 
   const dashboard = useDashboardData({ isAuthenticated, activePreset, apiKey, everhourApiKey, autoRefreshInterval });
   const filters = useDashboardFilters(dashboard.data, activePreset);
