@@ -19,7 +19,8 @@ const COLUMNS = [
   { key: 'assignee', label: 'Assignee' }, { key: 'currentStatus', label: 'Status' }, { key: 'priority', label: 'Priority' },
   { key: 'points', label: 'Points' }, { key: 'cycleNumber', label: 'Cycle' },
   { key: 'createdAt', label: 'Created', format: formatDate, exportFormat: formatISODate },
-  { key: 'completedAt', label: 'Completed', format: formatDate, exportFormat: formatISODate },
+  { key: 'completedAt', label: 'Delivered', format: formatDate, exportFormat: formatISODate },
+  { key: 'linearCompletedAt', label: 'Linear completed', format: formatDate, exportFormat: formatISODate },
   { key: 'cycleTimeDays', label: 'Cycle Time (d)' }, { key: 'leadTimeDays', label: 'Lead Time (d)' },
 ];
 const PAGE_SIZE = 50;
