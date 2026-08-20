@@ -1,5 +1,6 @@
 import { Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { axisProps, ChartGrid, ChartTooltip, EmptyChart } from './ChartPrimitives';
+import { axisProps } from './chartConfig';
+import { ChartGrid, ChartTooltip, EmptyChart } from './ChartPrimitives';
 
 export default function BurndownChart({ data }) {
   if (!data.length) return <EmptyChart>No point data for this cycle.</EmptyChart>;
