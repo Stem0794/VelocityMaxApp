@@ -1,11 +1,10 @@
 import { AlertTriangle, RefreshCw, Settings } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import BudgetOverview from './components/BudgetOverview';
-import DashboardCharts from './components/DashboardCharts';
-import DashboardFilters from './components/DashboardFilters';
-import DashboardHeader from './components/DashboardHeader';
-import HealthScore from './components/HealthScore';
-import KpiGrid from './components/KpiGrid';
+import IssuesTable from './IssuesTable';
+import MetricPage from './components/MetricPage';
+import OverviewPage from './components/OverviewPage';
+import ProductShell from './components/ProductShell';
+import ScopeDrawer from './components/ScopeDrawer';
 import { resolveActivePreset } from './dashboardState';
 import useDashboardData from './hooks/useDashboardData';
 import useDashboardFilters from './hooks/useDashboardFilters';
@@ -14,10 +13,18 @@ import SettingsModal from './SettingsModal';
 
 const DEFAULT_PRESETS = [{ id: 'demo', name: 'Demo', teamId: '', projectIds: [], everhourProjectIds: [] }];
 const GOOGLE_CLIENT_ID = '971045009454-n3krt7kq2ku7fg43he23elm9kg5vvq0v.apps.googleusercontent.com';
+const DELIVERY_CHARTS = ['velocity', 'cycle-compare', 'burnup', 'burndown', 'prediction'];
+const FLOW_CHARTS = ['cycle-times', 'lead-time', 'flow-efficiency', 'status-breakdown', 'cfd'];
+const VALID_VIEWS = new Set(['overview', 'delivery', 'flow', 'issues']);
 
 function loadJSON(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || '') || fallback; }
   catch { return fallback; }
+}
+
+function loadView() {
+  const value = localStorage.getItem('vmActiveView');
+  return VALID_VIEWS.has(value) ? value : 'overview';
 }
 
 function LoginScreen({ onAuthenticated, onDemo }) {
@@ -73,11 +80,11 @@ function LoginScreen({ onAuthenticated, onDemo }) {
   return (
     <main className="login-screen-v2">
       <section className="login-card-v2">
-        <div className="login-brand"><div className="brand-mark">VM</div><div><h1>VelocityMAX</h1><p>Engineering delivery metrics in one dashboard.</p></div></div>
+        <div className="login-brand"><div className="brand-mark">VM</div><div><h1>VelocityMAX</h1><p>Delivery intelligence for engineering teams.</p></div></div>
         <div id="google-signin-btn" className="google-signin-slot" />
         {authError ? <p className="inline-error" role="alert">{authError}</p> : null}
         <div className="login-divider"><span>or</span></div>
-        <button className="demo-btn" type="button" onClick={onDemo}>Explore with demo data</button>
+        <button className="demo-btn" type="button" onClick={onDemo}>Explore the demo workspace</button>
         <p className="login-security-note">Google sign-in limits dashboard access. API keys remain stored locally in your browser.</p>
       </section>
     </main>
@@ -86,18 +93,14 @@ function LoginScreen({ onAuthenticated, onDemo }) {
 
 function LoadingScreen({ presetName }) {
   return (
-    <main className="login-screen-v2">
-      <div className="loading-state-v2">
-        <div className="loader" />
-        <strong>Loading {presetName || 'dashboard'}…</strong>
-        <span>Fetching the core dataset. Issue history will continue in the dashboard.</span>
-      </div>
-    </main>
+    <main className="login-screen-v2"><div className="loading-state-v2"><div className="loader" /><strong>Opening {presetName || 'workspace'}…</strong><span>Core delivery data loads first. Workflow history continues progressively.</span></div></main>
   );
 }
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => sessionStorage.getItem('vmAuthed') === '1');
+  const [activeView, setActiveView] = useState(loadView);
+  const [scopeOpen, setScopeOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsAddPreset, setSettingsAddPreset] = useState(false);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('vmApiKey') || '');
@@ -106,7 +109,6 @@ export default function App() {
   const [activePresetId, setActivePresetId] = useState(() => localStorage.getItem('vmActivePreset') || 'demo');
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => localStorage.getItem('vmAutoRefresh') || 'off');
   const activePreset = useMemo(() => resolveActivePreset(presets, activePresetId), [activePresetId, presets]);
-  const closeSettings = useCallback(() => setShowSettings(false), []);
 
   useEffect(() => {
     if (activePreset && activePreset.id !== activePresetId) {
@@ -119,42 +121,24 @@ export default function App() {
   const filters = useDashboardFilters(dashboard.data, activePreset);
   const metrics = useDashboardMetrics(filters.filteredIssues, dashboard.data?.lastUpdated, dashboard.data?.workflowStates || []);
 
-  const authenticate = () => {
-    sessionStorage.setItem('vmAuthed', '1');
-    setIsAuthenticated(true);
+  const navigateView = view => {
+    if (!VALID_VIEWS.has(view)) return;
+    setActiveView(view);
+    localStorage.setItem('vmActiveView', view);
   };
-  const demoLogin = () => {
-    setActivePresetId('demo');
-    localStorage.setItem('vmActivePreset', 'demo');
-    authenticate();
-  };
-  const signOut = () => {
-    sessionStorage.removeItem('vmAuthed');
-    setIsAuthenticated(false);
-    window.google?.accounts?.id?.disableAutoSelect?.();
-  };
-  const selectPreset = id => {
-    setActivePresetId(id);
-    localStorage.setItem('vmActivePreset', id);
-  };
-  const openSettings = (addPreset = false) => {
-    setSettingsAddPreset(addPreset);
-    setShowSettings(true);
-  };
+  const authenticate = () => { sessionStorage.setItem('vmAuthed', '1'); setIsAuthenticated(true); };
+  const demoLogin = () => { setActivePresetId('demo'); localStorage.setItem('vmActivePreset', 'demo'); authenticate(); };
+  const signOut = () => { sessionStorage.removeItem('vmAuthed'); setIsAuthenticated(false); window.google?.accounts?.id?.disableAutoSelect?.(); };
+  const selectPreset = id => { setActivePresetId(id); localStorage.setItem('vmActivePreset', id); };
+  const openSettings = (addPreset = false) => { setSettingsAddPreset(addPreset); setShowSettings(true); };
 
   const saveSettings = ({ apiKey: nextApiKey, everhourApiKey: nextEverhourKey, presets: nextPresets }) => {
     const safePresets = nextPresets.length ? nextPresets : DEFAULT_PRESETS;
-    setApiKey(nextApiKey);
-    localStorage.setItem('vmApiKey', nextApiKey);
-    setEverhourApiKey(nextEverhourKey);
-    localStorage.setItem('vmEverhourKey', nextEverhourKey);
-    setPresets(safePresets);
-    localStorage.setItem('vmPresets', JSON.stringify(safePresets));
+    setApiKey(nextApiKey); localStorage.setItem('vmApiKey', nextApiKey);
+    setEverhourApiKey(nextEverhourKey); localStorage.setItem('vmEverhourKey', nextEverhourKey);
+    setPresets(safePresets); localStorage.setItem('vmPresets', JSON.stringify(safePresets));
     const nextActive = resolveActivePreset(safePresets, activePresetId);
-    if (nextActive) {
-      setActivePresetId(nextActive.id);
-      localStorage.setItem('vmActivePreset', nextActive.id);
-    }
+    if (nextActive) { setActivePresetId(nextActive.id); localStorage.setItem('vmActivePreset', nextActive.id); }
   };
 
   const saveFilterDefaults = () => {
@@ -170,57 +154,51 @@ export default function App() {
   if (!dashboard.data && dashboard.error) {
     return (
       <main className="login-screen-v2">
-        <section className="error-state-v2">
-          <AlertTriangle size={24} aria-hidden="true" />
-          <h1>Could not load the dashboard</h1>
-          <p>{dashboard.error}</p>
-          <div>
-            <button type="button" onClick={dashboard.retry}><RefreshCw size={15} aria-hidden="true" /> Retry</button>
-            <button className="subtle-btn" type="button" onClick={() => openSettings(false)}><Settings size={15} aria-hidden="true" /> Settings</button>
-          </div>
-        </section>
-        {showSettings ? <SettingsModal apiKey={apiKey} everhourApiKey={everhourApiKey} presets={presets} onSave={saveSettings} onClose={closeSettings} /> : null}
+        <section className="error-state-v2"><AlertTriangle size={24} aria-hidden="true" /><h1>Could not open this workspace</h1><p>{dashboard.error}</p><div><button type="button" onClick={dashboard.retry}><RefreshCw size={15} /> Retry</button><button className="subtle-btn" type="button" onClick={() => openSettings(false)}><Settings size={15} /> Settings</button></div></section>
+        {showSettings ? <SettingsModal apiKey={apiKey} everhourApiKey={everhourApiKey} presets={presets} onSave={saveSettings} onClose={() => setShowSettings(false)} /> : null}
       </main>
     );
   }
 
-  const snapshotMetrics = {
-    totalIssues: metrics.totalIssues,
-    completedIssues: metrics.completedIssues,
-    totalPoints: metrics.totalPoints,
-    avgCycleTime: metrics.avgCycleTime,
+  const sharedMetricProps = {
+    metrics,
+    issues: filters.filteredIssues,
+    selectedStatuses: filters.selectedStatuses,
+    setSelectedStatuses: filters.setSelectedStatuses,
+    loadingHistory: dashboard.loadingHistory,
+    historyProgress: dashboard.historyProgress,
   };
 
   return (
     <>
-      {showSettings ? <SettingsModal apiKey={apiKey} everhourApiKey={everhourApiKey} presets={presets} onSave={saveSettings} onClose={closeSettings} initialAdd={settingsAddPreset} /> : null}
-      <div className="app-container-v2">
-        <DashboardHeader
-          presets={presets}
-          activePresetId={activePresetId}
-          onSelectPreset={selectPreset}
-          onAddPreset={() => openSettings(true)}
-          onSettings={() => openSettings(false)}
-          onSignOut={signOut}
-          onRefresh={dashboard.refresh}
-          refreshing={dashboard.refreshing}
-          data={dashboard.data}
-          loadingHistory={dashboard.loadingHistory}
-          historyProgress={dashboard.historyProgress}
-          autoRefreshInterval={autoRefreshInterval}
-          onAutoRefreshChange={value => { setAutoRefreshInterval(value); localStorage.setItem('vmAutoRefresh', value); }}
-        />
-        <main className="dashboard-main-v2">
-          {dashboard.error ? <div className="inline-warning" role="status"><AlertTriangle size={15} aria-hidden="true" />Refresh failed: {dashboard.error}. Existing data is still shown.</div> : null}
-          {dashboard.historyWarning ? <div className="inline-warning" role="status"><AlertTriangle size={15} aria-hidden="true" />{dashboard.historyWarning}</div> : null}
-          <DashboardFilters filters={filters} onSaveDefaults={saveFilterDefaults} canSaveDefaults={Boolean(activePreset)} />
-          <BudgetOverview budgetData={dashboard.budgetData} error={dashboard.budgetError} configured={Boolean(activePreset?.everhourProjectIds?.length)} />
-          <KpiGrid totalIssues={metrics.totalIssues} completedIssues={metrics.completedIssues} totalPoints={metrics.totalPoints} completedPoints={metrics.completedPoints} avgCycleTime={metrics.avgCycleTime} medianCycleTime={metrics.medianCycleTime} />
-          <HealthScore healthScore={metrics.healthScore} presetName={activePreset?.name} team={dashboard.data?.team} metrics={snapshotMetrics} />
-          {!filters.filteredIssues.length ? <section className="dashboard-empty-state"><h2>No issues in this scope</h2><p>Adjust the filters or choose another preset. Charts that can render empty datasets remain available below.</p></section> : null}
-          <DashboardCharts metrics={metrics} issues={filters.filteredIssues} selectedStatuses={filters.selectedStatuses} setSelectedStatuses={filters.setSelectedStatuses} loadingHistory={dashboard.loadingHistory} historyProgress={dashboard.historyProgress} />
-        </main>
-      </div>
+      {showSettings ? <SettingsModal apiKey={apiKey} everhourApiKey={everhourApiKey} presets={presets} onSave={saveSettings} onClose={() => setShowSettings(false)} initialAdd={settingsAddPreset} /> : null}
+      <ScopeDrawer open={scopeOpen} onClose={() => setScopeOpen(false)} filters={filters} onSaveDefaults={saveFilterDefaults} canSaveDefaults={Boolean(activePreset)} />
+      <ProductShell
+        activeView={activeView}
+        onViewChange={navigateView}
+        presets={presets}
+        activePresetId={activePresetId}
+        onSelectPreset={selectPreset}
+        onAddPreset={() => openSettings(true)}
+        onOpenScope={() => setScopeOpen(true)}
+        activeFilterCount={filters.activeFilterCount}
+        onSettings={() => openSettings(false)}
+        onSignOut={signOut}
+        onRefresh={dashboard.refresh}
+        refreshing={dashboard.refreshing}
+        autoRefreshInterval={autoRefreshInterval}
+        onAutoRefreshChange={value => { setAutoRefreshInterval(value); localStorage.setItem('vmAutoRefresh', value); }}
+        team={dashboard.data?.team}
+        lastUpdated={dashboard.data?.lastUpdated}
+      >
+        {dashboard.error ? <div className="workspace-notice" role="status"><AlertTriangle size={16} /> Refresh failed. Existing data remains available.</div> : null}
+        {dashboard.historyWarning ? <div className="workspace-notice" role="status"><AlertTriangle size={16} /> {dashboard.historyWarning}</div> : null}
+
+        {activeView === 'overview' ? <OverviewPage {...sharedMetricProps} team={dashboard.data?.team} presetName={activePreset?.name} budgetData={dashboard.budgetData} budgetError={dashboard.budgetError} budgetConfigured={Boolean(activePreset?.everhourProjectIds?.length)} onNavigate={navigateView} onOpenScope={() => setScopeOpen(true)} /> : null}
+        {activeView === 'delivery' ? <MetricPage {...sharedMetricProps} eyebrow="Delivery system" title="Throughput and scope" description="Understand what the team finishes, how scope changes and where the current trajectory leads." chartIds={DELIVERY_CHARTS} /> : null}
+        {activeView === 'flow' ? <MetricPage {...sharedMetricProps} eyebrow="Flow system" title="Where work slows down" description="Inspect cycle time, lead time, workflow inventory and time spent in each state." chartIds={FLOW_CHARTS} /> : null}
+        {activeView === 'issues' ? <div className="issues-page"><section className="metric-page-intro"><span className="page-eyebrow">Work inventory</span><h2>Issues</h2><p>Search, sort and export the exact work behind every metric in this workspace.</p></section><section className="issues-workspace"><IssuesTable issues={filters.filteredIssues} /></section></div> : null}
+      </ProductShell>
     </>
   );
 }
