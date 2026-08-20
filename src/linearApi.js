@@ -36,13 +36,18 @@ export async function fetchProjects(apiKey, teamId) {
   return (data.team?.projects?.nodes || []).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function fetchWorkflowStates(apiKey, teamId) {
+export async function fetchWorkflowStateOptions(apiKey, teamId) {
   const data = await gql(apiKey, `
     query($teamId: String!) {
       team(id: $teamId) { states { nodes { id name type } } }
     }
   `, { teamId });
-  return (data.team?.states?.nodes || []).sort((a, b) => a.name.localeCompare(b.name)).map(state => state.name);
+  return (data.team?.states?.nodes || []).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function fetchWorkflowStates(apiKey, teamId) {
+  const states = await fetchWorkflowStateOptions(apiKey, teamId);
+  return states.map(state => state.name);
 }
 
 export async function fetchIssues(apiKey, teamId, projectIds = []) {
@@ -66,9 +71,9 @@ export async function fetchIssues(apiKey, teamId, projectIds = []) {
             pageInfo { hasNextPage endCursor }
             nodes {
               id identifier title estimate priority priorityLabel createdAt completedAt canceledAt startedAt
-              state { name type }
+              state { id name type }
               assignee { name }
-              project { name }
+              project { id name }
               labels { nodes { name } }
               cycle { number startsAt endsAt }
             }
@@ -96,7 +101,7 @@ async function fetchIssueHistory(apiKey, issueId) {
         issue(id: $issueId) {
           history(first: $first${cursor ? ', after: $after' : ''}) {
             pageInfo { hasNextPage endCursor }
-            nodes { createdAt fromState { name } toState { name } }
+            nodes { createdAt fromState { id name } toState { id name } }
           }
         }
       }
@@ -118,8 +123,10 @@ export async function fetchStatusHistories(apiKey, issues, onProgress) {
     await Promise.all(batch.map(async issue => {
       try {
         issue._history = await fetchIssueHistory(apiKey, issue.id);
+        issue._historyFailed = false;
       } catch (error) {
         issue._history = [];
+        issue._historyFailed = true;
         failures.push({ id: issue.identifier || issue.id, message: error.message });
       } finally {
         completed += 1;
@@ -148,13 +155,67 @@ function computeTimeByStatus(issue) {
   return Object.fromEntries(Object.entries(result).map(([key, value]) => [key, Math.round(value * 10) / 10]));
 }
 
-export function processIssues(issues) {
+function matchesDeliveryState(state, rule) {
+  if (!state || !rule) return false;
+  if (rule.stateId && state.id) return state.id === rule.stateId;
+  return Boolean(rule.stateName && state.name === rule.stateName);
+}
+
+export function resolveDeliveredAt(issue, deliveryRules = {}) {
+  const projectId = issue.project?.id || '';
+  const rule = deliveryRules?.[projectId];
+  if (!rule?.stateId && !rule?.stateName) {
+    return {
+      deliveredAt: issue.completedAt || '',
+      deliveryConfigured: false,
+      deliveryStateName: '',
+      deliverySource: issue.completedAt ? 'linear-completed' : 'none',
+    };
+  }
+
+  if (Array.isArray(issue._history)) {
+    const firstMatch = issue._history.find(entry => matchesDeliveryState(entry.toState, rule));
+    if (firstMatch?.createdAt) {
+      return {
+        deliveredAt: firstMatch.createdAt,
+        deliveryConfigured: true,
+        deliveryStateName: rule.stateName || firstMatch.toState?.name || '',
+        deliverySource: 'workflow-history',
+      };
+    }
+    if (issue._historyFailed && issue.completedAt) {
+      return {
+        deliveredAt: issue.completedAt,
+        deliveryConfigured: true,
+        deliveryStateName: rule.stateName || '',
+        deliverySource: 'history-fallback',
+      };
+    }
+    return {
+      deliveredAt: '',
+      deliveryConfigured: true,
+      deliveryStateName: rule.stateName || '',
+      deliverySource: 'not-reached',
+    };
+  }
+
+  return {
+    deliveredAt: issue.completedAt || '',
+    deliveryConfigured: true,
+    deliveryStateName: rule.stateName || '',
+    deliverySource: issue.completedAt ? 'provisional-linear-completed' : 'history-pending',
+  };
+}
+
+export function processIssues(issues, deliveryRules = {}) {
   return issues.map(issue => {
-    const cycleTime = issue.startedAt && issue.completedAt
-      ? Math.round(((new Date(issue.completedAt) - new Date(issue.startedAt)) / 86400000) * 10) / 10
+    const delivery = resolveDeliveredAt(issue, deliveryRules);
+    const deliveredAt = delivery.deliveredAt;
+    const cycleTime = issue.startedAt && deliveredAt
+      ? Math.round(((new Date(deliveredAt) - new Date(issue.startedAt)) / 86400000) * 10) / 10
       : null;
-    const leadTime = issue.completedAt
-      ? Math.round(((new Date(issue.completedAt) - new Date(issue.createdAt)) / 86400000) * 10) / 10
+    const leadTime = deliveredAt
+      ? Math.round(((new Date(deliveredAt) - new Date(issue.createdAt)) / 86400000) * 10) / 10
       : null;
     return {
       id: issue.identifier,
@@ -162,6 +223,7 @@ export function processIssues(issues) {
       points: issue.estimate || 0,
       priority: issue.priorityLabel || '',
       assignee: issue.assignee?.name || '',
+      projectId: issue.project?.id || '',
       project: issue.project?.name || '',
       labels: issue.labels?.nodes.map(label => label.name).join(', ') || '',
       currentStatus: issue.state?.name || '',
@@ -171,7 +233,12 @@ export function processIssues(issues) {
       cycleEndsAt: issue.cycle?.endsAt || '',
       createdAt: issue.createdAt || '',
       startedAt: issue.startedAt || '',
-      completedAt: issue.completedAt || '',
+      deliveredAt,
+      completedAt: deliveredAt,
+      linearCompletedAt: issue.completedAt || '',
+      deliveryConfigured: delivery.deliveryConfigured,
+      deliveryStateName: delivery.deliveryStateName,
+      deliverySource: delivery.deliverySource,
       canceledAt: issue.canceledAt || '',
       cycleTimeDays: cycleTime,
       leadTimeDays: leadTime,
