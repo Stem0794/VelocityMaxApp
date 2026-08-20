@@ -192,6 +192,7 @@ export default function App() {
         deliveredIssueCount={filters.deliveredIssueCount}
         deliveryWindowActive={filters.deliveryWindowActive}
         deliveryWindowLabel={filters.deliveryWindowLabel}
+        isLinearWorkspace={Boolean(activePreset?.teamId && apiKey)}
         onSettings={() => openSettings(false)}
         onSignOut={signOut}
         onRefresh={dashboard.refresh}
