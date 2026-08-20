@@ -114,7 +114,7 @@ export default function useDashboardMetrics(issues, lastUpdated, workflowStates 
     if (totalIssues) {
       const pct = Math.round((completedIssues / totalIssues) * 100);
       const score = pct >= 70 ? 100 : pct >= 50 ? 75 : pct >= 30 ? 50 : 25;
-      factors.push({ key: 'completion', label: 'Completion', value: `${pct}% complete`, score });
+      factors.push({ key: 'delivery', label: 'Delivery', value: `${pct}% delivered`, score });
     }
     if (!factors.length) return null;
     return {
