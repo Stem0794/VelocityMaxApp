@@ -1,7 +1,8 @@
+/* eslint-disable react-refresh/only-export-components -- shared Recharts config is intentionally colocated with chart primitives */
 import { CartesianGrid } from 'recharts';
 
 export const axisProps = { stroke: 'var(--text-secondary)', fontSize: 11, tickLine: false, axisLine: false };
-export const gridProps = { strokeDasharray: '3 3', stroke: 'var(--border-color)', vertical: false };
+const gridProps = { strokeDasharray: '3 3', stroke: 'var(--border-color)', vertical: false };
 export const ChartGrid = () => <CartesianGrid {...gridProps} />;
 
 export function EmptyChart({ children }) {
