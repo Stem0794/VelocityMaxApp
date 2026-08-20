@@ -1,6 +1,6 @@
 import { CartesianGrid } from 'recharts';
+import { gridProps } from './chartConfig';
 
-const gridProps = { strokeDasharray: '3 3', stroke: 'var(--border-color)', vertical: false };
 export const ChartGrid = () => <CartesianGrid {...gridProps} />;
 
 export function EmptyChart({ children }) {

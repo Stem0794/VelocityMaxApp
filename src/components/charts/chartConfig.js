@@ -4,3 +4,9 @@ export const axisProps = {
   tickLine: false,
   axisLine: false,
 };
+
+export const gridProps = {
+  strokeDasharray: '3 3',
+  stroke: 'var(--border-color)',
+  vertical: false,
+};
