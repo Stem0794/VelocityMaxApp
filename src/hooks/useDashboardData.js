@@ -39,10 +39,7 @@ export default function useDashboardData({ isAuthenticated, activePreset, apiKey
     } else {
       setRefreshing(true);
     }
-    setError('');
-    setBudgetError('');
-    setHistoryWarning('');
-    setLoadingHistory(false);
+    setError(''); setBudgetError(''); setHistoryWarning(''); setLoadingHistory(false);
     setHistoryProgress({ done: 0, total: 0, failed: 0 });
 
     const loadBudget = async () => {
@@ -54,10 +51,7 @@ export default function useDashboardData({ isAuthenticated, activePreset, apiKey
         const rows = await fetchEverhourBudgets(everhourApiKey, preset.everhourProjectIds);
         if (fetchSeq.current === seq) setBudgetData(rows);
       } catch (budgetErr) {
-        if (fetchSeq.current === seq) {
-          setBudgetData(null);
-          setBudgetError(budgetErr.message || 'Could not load Everhour budgets.');
-        }
+        if (fetchSeq.current === seq) { setBudgetData(null); setBudgetError(budgetErr.message || 'Could not load Everhour budgets.'); }
       }
     };
     void loadBudget();
@@ -82,11 +76,8 @@ export default function useDashboardData({ isAuthenticated, activePreset, apiKey
       if (fetchSeq.current !== seq) return;
       const processed = processIssues(rawIssues);
       const coreData = {
-        issues: processed,
-        burnupData: computeBurnupData(processed),
-        workflowStates,
-        lastUpdated: new Date().toISOString(),
-        team: teamName,
+        issues: processed, burnupData: computeBurnupData(processed), workflowStates,
+        lastUpdated: new Date().toISOString(), team: teamName,
       };
       loadedPresetIdRef.current = preset.id;
       loadedSourceRef.current = sourceSignature;
@@ -99,20 +90,32 @@ export default function useDashboardData({ isAuthenticated, activePreset, apiKey
         if (fetchSeq.current === seq) setHistoryProgress({ done, total, failed });
       });
       if (fetchSeq.current !== seq) return;
-      publishData({ ...coreData, issues: processIssues(rawIssues) });
-      if (failures.length) {
-        setHistoryWarning(`${failures.length} issue histor${failures.length === 1 ? 'y' : 'ies'} could not be loaded. Time-in-status metrics are partial.`);
-      }
+      const withHistory = { ...coreData, issues: processIssues(rawIssues) };
+      publishData(withHistory);
+      if (failures.length) setHistoryWarning(`${failures.length} issue histor${failures.length === 1 ? 'y' : 'ies'} could not be loaded. Time-in-status metrics are partial.`);
     } catch (loadError) {
       if (fetchSeq.current === seq) setError(loadError.message || 'Could not load dashboard data.');
     } finally {
-      if (fetchSeq.current === seq) {
-        setLoading(false);
-        setRefreshing(false);
-        setLoadingHistory(false);
-      }
+      if (fetchSeq.current === seq) { setLoading(false); setRefreshing(false); setLoadingHistory(false); }
     }
   }, [activePreset, apiKey, everhourApiKey, isAuthenticated, publishData]);
+
+  useEffect(() => {
+    if (isAuthenticated) return;
+    fetchSeq.current += 1;
+    dataRef.current = null;
+    loadedPresetIdRef.current = null;
+    loadedSourceRef.current = null;
+    setData(null);
+    setBudgetData(null);
+    setLoading(false);
+    setRefreshing(false);
+    setLoadingHistory(false);
+    setHistoryProgress({ done: 0, total: 0, failed: 0 });
+    setError('');
+    setBudgetError('');
+    setHistoryWarning('');
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !activePreset) return;
