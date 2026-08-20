@@ -1,140 +1,139 @@
 # VelocityMAX
 
-A private engineering metrics dashboard that pulls data from **Linear** (issues, cycle time, velocity) and **Everhour** (budget tracking) and displays them in a single view.
+VelocityMAX is a static engineering delivery dashboard for **Linear** and **Everhour**. It combines throughput, cycle/lead time, sprint flow, forecasts, issue-level data and budget consumption in one responsive view.
 
-Deployed as a static site on GitHub Pages. All API keys stay in the browser — nothing is sent to any backend.
+The application is deployed to GitHub Pages. Linear and Everhour API keys are stored in the user's browser and are sent only to the corresponding provider APIs.
 
----
+## Current feature set
 
-## Features
+- Google Identity Services sign-in with an optional email allow-list.
+- Demo mode backed by `public/data.json`.
+- Linear issues, workflow states and issue-history loading.
+- Everhour project budget consumption.
+- Saved presets for team/project combinations.
+- Project, assignee, status and date filters with saved defaults.
+- Weekly velocity, cycle comparison, cycle-time scatter, burn-up, sprint burndown, lead-time histogram, flow efficiency, time in status, cumulative flow and scope prediction.
+- Team health score and PNG snapshot export.
+- Searchable/sortable Issues table with hardened CSV export.
+- Responsive dashboard with keyboard-accessible controls and reduced-motion support.
 
-- **Linear integration** — issues, cycle time, lead time, weekly velocity, burn-up chart, time-in-status breakdown
-- **Everhour integration** — budget overview per project (consumed vs. total, % used with colour-coded progress bars)
-- **Presets** — one-click switching between team/project combinations (e.g. "Project 1", "Project 2 TMA", "All")
-- **Filters** — project, assignee, multi-select status, date range; all persist across page refreshes
-- **Password protection** — SHA-256 hashed password baked into the bundle at build time; plaintext never stored anywhere
-- **No backend** — pure static SPA; API keys stored in `localStorage` only
+## Authentication
 
----
+VelocityMAX uses **Google Identity Services (GIS)**. The OAuth client ID is configured in the frontend and GitHub Pages build.
 
-## Getting started
+Set the optional GitHub Actions secret:
 
-### 1. Fork / clone
-
-```bash
-git clone https://github.com/Stem0794/VelocityMaxApp.git
-cd VelocityMaxApp
-npm install
-```
-
-### 2. Enable GitHub Pages
-
-In the repo settings → **Pages** → Source: **GitHub Actions**.
-
-### 3. Set GitHub Secrets
-
-Go to **Settings → Secrets and variables → Actions** and add:
-
-| Secret | Value |
+| Secret | Purpose |
 |---|---|
-| `VITE_APP_PASSWORD_HASH` | SHA-256 hash of your chosen password (see below) |
-| `LINEAR_API_KEY` | Your Linear personal API key (used only by the data-fetch GitHub Action) |
-| `LINEAR_TEAM_ID` | Your Linear team ID |
-| `LINEAR_PROJECT_IDS` | *(optional)* Comma-separated Linear project IDs to pre-filter |
+| `VITE_ALLOWED_EMAILS` | Comma-separated list of Google account email addresses allowed to enter the connected dashboard. If omitted, any valid Google account can sign in. |
 
-### 4. Generate a password hash
+The app also includes **Explore with demo data**. This intentionally allows anyone who can open the site to view the demo snapshot. Google sign-in is therefore an access gate for connected usage, not a substitute for server-side authorization.
 
-```bash
-node scripts/hash-password.js
-# prints a random strong password + its SHA-256 hash
+### Google OAuth setup
 
-node scripts/hash-password.js "mypassword"
-# hashes a specific password
-```
+Create a Google OAuth 2.0 Web application client and add the deployed GitHub Pages origin to **Authorized JavaScript origins**. If the client ID changes, update `GOOGLE_CLIENT_ID` in `src/App.jsx`.
 
-Copy the hash into the `VITE_APP_PASSWORD_HASH` secret. Store the plaintext password in your password manager — it is never saved anywhere in the codebase.
+## GitHub Pages deployment
 
-### 5. Deploy
+1. Fork or clone the repository.
+2. In repository settings, enable **Pages → GitHub Actions**.
+3. Add the relevant Actions secrets:
 
-Push to `main`. The GitHub Action will build and deploy to GitHub Pages automatically.
+| Secret | Required | Purpose |
+|---|---:|---|
+| `VITE_ALLOWED_EMAILS` | No | Google sign-in allow-list. |
+| `LINEAR_API_KEY` | No | Used by the scheduled workflow to refresh the public demo snapshot. |
+| `LINEAR_TEAM_ID` | No | Linear team used for the demo snapshot. |
+| `LINEAR_PROJECT_IDS` | No | Optional comma-separated project IDs for the demo snapshot. |
 
----
+4. Push to `main`. `.github/workflows/deploy.yml` builds and publishes the site.
 
-## First-time setup in the app
+A separate `.github/workflows/ci.yml` runs lint, unit tests and the production build for pull requests.
 
-1. Open the deployed URL and log in with your password.
-2. Click **⚙ Settings**.
-3. Paste your **Linear API key** (Linear → Settings → API → Personal API keys).
-4. *(Optional)* Paste your **Everhour API key** (Everhour → Settings → API).
-5. Click **+ Add Preset**, give it a name, select a team and projects.
-   - Select Everhour projects in the same preset to show a budget overview for it.
-6. Save. The dashboard loads immediately.
+## First-time connected setup
 
-API keys are stored in your browser's `localStorage` only — they never leave your machine.
+1. Open the deployed site and sign in with Google.
+2. Open **Settings**.
+3. Enter a Linear personal API key and choose **Test connection**.
+4. Optionally enter an Everhour API key and test it.
+5. Add a preset, select a Linear team and optional project subset, then select optional Everhour projects.
+6. Save settings and select the preset from the dashboard header.
 
----
-
-## Sharing with teammates
-
-Everyone uses the **same password** (the one whose hash is in `VITE_APP_PASSWORD_HASH`). Each person enters their own API keys in Settings after logging in — those keys stay in their own browser.
-
-To change the password: generate a new hash, update the GitHub Secret, and re-deploy.
-
----
+Credentials are persisted in `localStorage` on that browser only.
 
 ## Local development
 
 ```bash
-cp .env.local.example .env.local   # or create manually
+npm ci
 npm run dev
 ```
 
-`.env.local` (not committed):
-```
-LINEAR_API_KEY=lin_api_...
-LINEAR_TEAM_ID=...
-LINEAR_PROJECT_IDS=...   # optional
-VITE_APP_PASSWORD_HASH=  # leave empty to bypass auth in dev
-```
+Quality checks:
 
-Auth is bypassed in dev when `VITE_APP_PASSWORD_HASH` is not set.
-
-To pre-fetch a `data.json` snapshot for the demo data fallback:
 ```bash
-node scripts/fetch-data.js
+npm run lint
+npm test
+npm run build
+# or all three
+npm run check
 ```
 
----
+The unit tests use Node's built-in test runner, so no additional test framework dependency is required.
 
 ## Architecture
 
-```
+```text
 src/
-  App.jsx           — main dashboard, auth, preset switching, filter state
-  SettingsModal.jsx — API key input, preset create/edit/delete
-  linearApi.js      — Linear GraphQL client (issues, history, workflow states)
-  everhourApi.js    — Everhour REST client (projects, budget)
-  index.css         — all styles (dark glassmorphism theme)
+  App.jsx                         application composition + Google sign-in
+  SettingsModal.jsx               credentials, connection checks and presets
+  IssuesTable.jsx                 searchable/sortable issue table + CSV export
+  linearApi.js                    Linear GraphQL client and history processing
+  everhourApi.js                  Everhour REST client and budgets
+  computeCharts.js                pure chart/metric calculations
+  dashboardState.js               pure preset/chart/status state helpers
+  hooks/
+    useDashboardData.js           refresh, Linear history and Everhour state
+    useDashboardFilters.js        persistent filters, local-date ranges
+    useDashboardMetrics.js        derived metrics and health score
+  components/
+    DashboardHeader.jsx
+    DashboardFilters.jsx
+    KpiGrid.jsx
+    HealthScore.jsx
+    BudgetOverview.jsx
+    ChartCard.jsx
+    DashboardCharts.jsx           chart ordering/composition
+    charts/                       one component per visualization
+  utils/
+    csv.js                        hardened CSV output
+    date.js                       local date-range helpers
+  index.css                       legacy/base styles
+  redesign.css                    redesign stylesheet entry point
+  styles/                         modular redesign styles
 
-scripts/
-  fetch-data.js     — Node script run by GitHub Action to cache data.json
-  hash-password.js  — CLI helper to generate a password hash
-
-.github/workflows/
-  deploy.yml        — build + deploy to GitHub Pages on push to main
+test/
+  computeCharts.test.js
+  csv.test.js
+  dashboardState.test.js
 ```
 
-**Data flow:**
-1. On login, the active preset's Linear data is fetched directly from the browser via the Linear GraphQL API.
-2. Issue status histories are fetched in background batches of 10 (with a 400 ms delay between batches to respect rate limits).
-3. Everhour budget data is fetched in parallel, independently of Linear.
-4. If no API key or preset is configured, the app falls back to the cached `public/data.json` snapshot produced by the GitHub Action.
+### Data flow
 
----
+1. `useDashboardData` loads the active preset and guards against stale responses when presets change.
+2. Core Linear issues render first; issue histories continue in the background with partial-failure tolerance.
+3. Everhour budgets load independently and errors do not block Linear metrics.
+4. `useDashboardFilters` applies local browser filters and validates date ranges.
+5. `useDashboardMetrics` derives chart data, KPI values and the health score from the filtered issues.
+6. The chart components are pure presentation layers over those derived datasets.
 
-## Security notes
+## Security and privacy notes
 
-- The password hash is baked into the JS bundle — it is public. Use a strong, unique password.
-- `data.json` is publicly accessible on GitHub Pages (static file). It contains only aggregated metrics, no credentials.
-- The Linear and Everhour API keys are **never** in the bundle or in any server — they live only in the user's `localStorage`.
-- Content Security Policy is enforced via `<meta>` tags (GitHub Pages does not support HTTP headers). `connect-src` is restricted to `api.linear.app` and `api.everhour.com`.
+- Linear and Everhour API keys are stored in browser `localStorage`; anyone with access to the browser profile can read them.
+- A static frontend cannot provide the same credential protection as a server-side proxy. Use least-privilege API keys where the providers support them.
+- `public/data.json` is public on GitHub Pages. Only place demo/snapshot data there that is safe to expose publicly.
+- The CSP in `index.html` restricts scripts, frames and API connections to the app's required origins.
+- CSV exports neutralize cells beginning with common spreadsheet formula prefixes (`=`, `+`, `-`, `@`).
+
+## Scheduled demo refresh
+
+`.github/workflows/deploy.yml` runs hourly and on `main` pushes. When Linear snapshot secrets are configured, `scripts/fetch-data.js` refreshes `public/data.json` before the production build. Snapshot refresh is non-blocking so a temporary Linear failure does not prevent deployment of the current app.
