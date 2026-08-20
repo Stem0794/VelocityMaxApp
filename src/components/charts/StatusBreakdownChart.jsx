@@ -1,5 +1,6 @@
 import { Bar, BarChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { axisProps, ChartGrid, ChartTooltip, EmptyChart } from './ChartPrimitives';
+import { axisProps } from './chartConfig';
+import { ChartGrid, ChartTooltip, EmptyChart } from './ChartPrimitives';
 
 export default function StatusBreakdownChart({ data, statuses, selectedStatuses, setSelectedStatuses, loadingHistory, historyProgress }) {
   return (
