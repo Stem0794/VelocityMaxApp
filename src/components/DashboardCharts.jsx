@@ -20,11 +20,21 @@ function loadChartOrder() {
   catch { return DEFAULT_CHART_ORDER; }
 }
 
-export default function DashboardCharts({ metrics, issues, selectedStatuses, setSelectedStatuses, loadingHistory, historyProgress }) {
+export default function DashboardCharts({
+  metrics,
+  issues,
+  selectedStatuses,
+  setSelectedStatuses,
+  loadingHistory,
+  historyProgress,
+  visibleIds = null,
+  reorderable = true,
+}) {
   const [chartOrder, setChartOrder] = useState(loadChartOrder);
   const [dragOverId, setDragOverId] = useState(null);
   const [selectedCycle, setSelectedCycle] = useState('');
   const dragId = useRef(null);
+  const activeOrder = visibleIds || chartOrder;
 
   useEffect(() => {
     if (metrics.currentCycleNumber != null) setSelectedCycle(String(metrics.currentCycleNumber));
@@ -60,44 +70,48 @@ export default function DashboardCharts({ metrics, issues, selectedStatuses, set
     persistOrder(next);
   };
 
-  const dragProps = id => ({
-    draggable: true,
-    onDragStart: event => {
-      dragId.current = id;
-      event.dataTransfer.effectAllowed = 'move';
-    },
-    onDragEnter: () => {
-      if (dragId.current && dragId.current !== id) setDragOverId(id);
-    },
-    onDragOver: event => event.preventDefault(),
-    onDrop: event => {
-      event.preventDefault();
-      const source = dragId.current;
-      if (!source || source === id) return;
-      const next = [...chartOrder];
-      const from = next.indexOf(source);
-      const to = next.indexOf(id);
-      if (from < 0 || to < 0) return;
-      next.splice(to, 0, next.splice(from, 1)[0]);
-      persistOrder(next);
-      dragId.current = null;
-      setDragOverId(null);
-    },
-    onDragEnd: () => {
-      dragId.current = null;
-      setDragOverId(null);
-    },
-    'data-drag-over': dragOverId === id ? 'true' : undefined,
-  });
+  const dragProps = id => {
+    if (!reorderable) return undefined;
+    return {
+      draggable: true,
+      onDragStart: event => {
+        dragId.current = id;
+        event.dataTransfer.effectAllowed = 'move';
+      },
+      onDragEnter: () => {
+        if (dragId.current && dragId.current !== id) setDragOverId(id);
+      },
+      onDragOver: event => event.preventDefault(),
+      onDrop: event => {
+        event.preventDefault();
+        const source = dragId.current;
+        if (!source || source === id) return;
+        const next = [...chartOrder];
+        const from = next.indexOf(source);
+        const to = next.indexOf(id);
+        if (from < 0 || to < 0) return;
+        next.splice(to, 0, next.splice(from, 1)[0]);
+        persistOrder(next);
+        dragId.current = null;
+        setDragOverId(null);
+      },
+      onDragEnd: () => {
+        dragId.current = null;
+        setDragOverId(null);
+      },
+      'data-drag-over': dragOverId === id ? 'true' : undefined,
+    };
+  };
 
   const cardProps = (id, title, extra = {}) => ({
     id,
     title,
     dragProps: dragProps(id),
-    first: chartOrder[0] === id,
-    last: chartOrder.at(-1) === id,
+    first: activeOrder[0] === id,
+    last: activeOrder.at(-1) === id,
     onMoveUp: () => move(id, -1),
     onMoveDown: () => move(id, 1),
+    reorderable,
     ...extra,
   });
 
@@ -132,8 +146,8 @@ export default function DashboardCharts({ metrics, issues, selectedStatuses, set
 
   return (
     <>
-      <div className="charts-grid-v2">{chartOrder.map(renderChart)}</div>
-      {JSON.stringify(chartOrder) !== JSON.stringify(DEFAULT_CHART_ORDER) ? (
+      <div className={`charts-grid-v2${reorderable ? '' : ' fixed-order'}`}>{activeOrder.map(renderChart)}</div>
+      {reorderable && JSON.stringify(chartOrder) !== JSON.stringify(DEFAULT_CHART_ORDER) ? (
         <div className="chart-order-reset">
           <button className="subtle-btn" type="button" onClick={() => { localStorage.removeItem('vmChartOrder'); setChartOrder(DEFAULT_CHART_ORDER); }}>
             <RotateCcw size={14} aria-hidden="true" /> Reset chart order
