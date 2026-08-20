@@ -1,7 +1,6 @@
 import { AlertTriangle, RefreshCw, Settings } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import IssuesTable from './IssuesTable';
-import SettingsModal from './SettingsModal';
 import MetricPage from './components/MetricPage';
 import OverviewPage from './components/OverviewPage';
 import ProductShell from './components/ProductShell';
@@ -10,112 +9,104 @@ import { resolveActivePreset } from './dashboardState';
 import useDashboardData from './hooks/useDashboardData';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import useDashboardMetrics from './hooks/useDashboardMetrics';
+import SettingsModal from './SettingsModal';
 
-const DEFAULT_PRESETS = [{ id: 'demo', name: 'Demo workspace', teamId: '', projectIds: [], projectNames: [], everhourProjectIds: [], everhourProjectNames: [] }];
-const VALID_VIEWS = new Set(['overview', 'delivery', 'flow', 'issues']);
+const DEFAULT_PRESETS = [{ id: 'demo', name: 'Demo', teamId: '', projectIds: [], everhourProjectIds: [] }];
+const GOOGLE_CLIENT_ID = '971045009454-n3krt7kq2ku7fg43he23elm9kg5vvq0v.apps.googleusercontent.com';
 const DELIVERY_CHARTS = ['velocity', 'cycle-compare', 'burnup', 'burndown', 'prediction'];
 const FLOW_CHARTS = ['cycle-times', 'lead-time', 'flow-efficiency', 'status-breakdown', 'cfd'];
+const VALID_VIEWS = new Set(['overview', 'delivery', 'flow', 'issues']);
 
-function loadPresets() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem('vmPresets') || 'null');
-    return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_PRESETS;
-  } catch {
-    return DEFAULT_PRESETS;
-  }
+function loadJSON(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key) || '') || fallback; }
+  catch { return fallback; }
 }
 
-function parseJwt(token) {
-  try {
-    const payload = token.split('.')[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const json = decodeURIComponent(atob(normalized).split('').map(char => `%${(`00${char.charCodeAt(0).toString(16)}`).slice(-2)}`).join(''));
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
+function loadView() {
+  const value = localStorage.getItem('vmActiveView');
+  return VALID_VIEWS.has(value) ? value : 'overview';
 }
 
 function LoginScreen({ onAuthenticated, onDemo }) {
-  const googleButtonRef = useRef(null);
-  const [googleError, setGoogleError] = useState('');
+  const [authError, setAuthError] = useState('');
+  const handleCredential = useCallback(response => {
+    try {
+      const part = response.credential?.split('.')[1];
+      if (!part) throw new Error('Missing credential');
+      const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(base64 + '='.repeat((4 - base64.length % 4) % 4)));
+      if (payload.aud !== GOOGLE_CLIENT_ID || Number(payload.exp) * 1000 <= Date.now() || payload.email_verified === false) {
+        throw new Error('Google credential is not valid for this application.');
+      }
+      const allowed = import.meta.env.VITE_ALLOWED_EMAILS;
+      if (allowed) {
+        const emails = allowed.split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
+        if (!emails.includes(String(payload.email || '').toLowerCase())) throw new Error(`Access denied for ${payload.email || 'this account'}.`);
+      }
+      onAuthenticated();
+    } catch (error) {
+      setAuthError(error.message || 'Authentication failed. Please try again.');
+    }
+  }, [onAuthenticated]);
 
   useEffect(() => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    if (!clientId || !googleButtonRef.current) return undefined;
-    let cancelled = false;
     const init = () => {
-      if (cancelled || !window.google?.accounts?.id || !googleButtonRef.current) return false;
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: response => {
-          const payload = parseJwt(response.credential);
-          const allowed = (import.meta.env.VITE_ALLOWED_EMAILS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
-          const audience = Array.isArray(payload?.aud) ? payload.aud : [payload?.aud];
-          const validAudience = audience.includes(clientId);
-          const validExpiry = Number(payload?.exp || 0) * 1000 > Date.now();
-          const emailVerified = payload?.email_verified === true;
-          const emailAllowed = !allowed.length || allowed.includes(String(payload?.email || '').toLowerCase());
-          if (!validAudience || !validExpiry || !emailVerified || !emailAllowed) {
-            setGoogleError('This Google account is not authorized for this dashboard.');
-            return;
-          }
-          setGoogleError('');
-          onAuthenticated();
-        },
-      });
-      const width = Math.max(240, Math.min(360, Math.floor(googleButtonRef.current.getBoundingClientRect().width || 320)));
-      window.google.accounts.id.renderButton(googleButtonRef.current, { theme: 'outline', size: 'large', shape: 'pill', width });
-      return true;
+      const element = document.getElementById('google-signin-btn');
+      if (!element || !window.google?.accounts?.id) return;
+      element.replaceChildren();
+      const width = Math.min(360, Math.max(240, element.clientWidth || 280));
+      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredential });
+      window.google.accounts.id.renderButton(element, { theme: 'filled_black', size: 'large', text: 'signin_with', shape: 'rectangular', width });
     };
-    if (init()) return () => { cancelled = true; };
-    const script = document.querySelector('script[data-vm-google]') || document.createElement('script');
-    if (!script.dataset.vmGoogle) {
-      script.dataset.vmGoogle = 'true';
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      document.head.appendChild(script);
+    if (window.google?.accounts?.id) {
+      init();
+      return undefined;
     }
+    const existing = document.querySelector('script[data-velocitymax-google]');
+    if (existing) {
+      existing.addEventListener('load', init, { once: true });
+      return () => existing.removeEventListener('load', init);
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.velocitymaxGoogle = 'true';
     script.addEventListener('load', init, { once: true });
-    return () => { cancelled = true; script.removeEventListener('load', init); };
-  }, [onAuthenticated]);
+    document.head.appendChild(script);
+    return () => script.removeEventListener('load', init);
+  }, [handleCredential]);
 
   return (
     <main className="login-screen-v2">
       <section className="login-card-v2">
-        <span className="login-mark">VM</span>
-        <p className="page-eyebrow">Delivery intelligence</p>
-        <h1>VelocityMAX</h1>
-        <p>One place to understand throughput, flow, scope and delivery health.</p>
-        <div className="login-actions-v2">
-          {import.meta.env.VITE_GOOGLE_CLIENT_ID ? <div ref={googleButtonRef} className="google-login-slot" /> : null}
-          {googleError ? <p className="inline-error" role="alert">{googleError}</p> : null}
-          <button type="button" className="hero-primary" onClick={onDemo}>Open demo workspace</button>
-        </div>
+        <div className="login-brand"><div className="brand-mark">VM</div><div><h1>VelocityMAX</h1><p>Delivery intelligence for engineering teams.</p></div></div>
+        <div id="google-signin-btn" className="google-signin-slot" />
+        {authError ? <p className="inline-error" role="alert">{authError}</p> : null}
+        <div className="login-divider"><span>or</span></div>
+        <button className="demo-btn" type="button" onClick={onDemo}>Explore the demo workspace</button>
+        <p className="login-security-note">Google sign-in limits dashboard access. API keys remain stored locally in your browser.</p>
       </section>
     </main>
   );
 }
 
 function LoadingScreen({ presetName }) {
-  return <main className="loading-screen-v2"><span className="loading-orb" /><p>Opening {presetName || 'workspace'}…</p></main>;
+  return (
+    <main className="login-screen-v2"><div className="loading-state-v2"><div className="loader" /><strong>Opening {presetName || 'workspace'}…</strong><span>Core delivery data loads first. Workflow history continues progressively.</span></div></main>
+  );
 }
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => sessionStorage.getItem('vmAuthed') === '1');
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('vmApiKey') || '');
-  const [everhourApiKey, setEverhourApiKey] = useState(() => localStorage.getItem('vmEverhourKey') || '');
-  const [presets, setPresets] = useState(loadPresets);
-  const [activePresetId, setActivePresetId] = useState(() => localStorage.getItem('vmActivePreset') || 'demo');
-  const [activeView, setActiveView] = useState(() => {
-    const saved = localStorage.getItem('vmActiveView') || 'overview';
-    return VALID_VIEWS.has(saved) ? saved : 'overview';
-  });
+  const [activeView, setActiveView] = useState(loadView);
+  const [scopeOpen, setScopeOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsAddPreset, setSettingsAddPreset] = useState(false);
-  const [scopeOpen, setScopeOpen] = useState(false);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('vmApiKey') || '');
+  const [everhourApiKey, setEverhourApiKey] = useState(() => localStorage.getItem('vmEverhourKey') || '');
+  const [presets, setPresets] = useState(() => loadJSON('vmPresets', DEFAULT_PRESETS));
+  const [activePresetId, setActivePresetId] = useState(() => localStorage.getItem('vmActivePreset') || 'demo');
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => localStorage.getItem('vmAutoRefresh') || 'off');
   const activePreset = useMemo(() => resolveActivePreset(presets, activePresetId), [activePresetId, presets]);
 
