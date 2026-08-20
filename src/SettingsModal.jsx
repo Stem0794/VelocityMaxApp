@@ -1,6 +1,6 @@
 import { CheckCircle2, Pencil, Plus, Trash2, X, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { fetchProjects, fetchTeams } from './linearApi';
+import { fetchProjects, fetchTeams, fetchWorkflowStateOptions } from './linearApi';
 import { fetchEverhourProjects } from './everhourApi';
 
 function PresetForm({ preset, linearKey, everhourKey, onSave, onCancel }) {
@@ -8,11 +8,13 @@ function PresetForm({ preset, linearKey, everhourKey, onSave, onCancel }) {
   const [teamId, setTeamId] = useState(preset?.teamId || '');
   const [teamName, setTeamName] = useState(preset?.teamName || '');
   const [projectIds, setProjectIds] = useState(preset?.projectIds || []);
+  const [deliveryRules, setDeliveryRules] = useState(preset?.deliveryRules || {});
   const [everhourProjectIds, setEverhourProjectIds] = useState(preset?.everhourProjectIds || []);
   const [teams, setTeams] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [workflowStates, setWorkflowStates] = useState([]);
   const [everhourProjects, setEverhourProjects] = useState([]);
-  const [loading, setLoading] = useState({ teams: false, projects: false, everhour: false });
+  const [loading, setLoading] = useState({ teams: false, projects: false, states: false, everhour: false });
   const [error, setError] = useState('');
   const [projectSearch, setProjectSearch] = useState('');
   const [everhourSearch, setEverhourSearch] = useState('');
@@ -34,18 +36,30 @@ function PresetForm({ preset, linearKey, everhourKey, onSave, onCancel }) {
   useEffect(() => {
     if (!linearKey || !teamId) {
       setProjects([]);
+      setWorkflowStates([]);
       return undefined;
     }
     let alive = true;
-    setLoading(value => ({ ...value, projects: true }));
-    fetchProjects(linearKey, teamId)
-      .then(rows => {
+    setLoading(value => ({ ...value, projects: true, states: true }));
+    Promise.all([
+      fetchProjects(linearKey, teamId),
+      fetchWorkflowStateOptions(linearKey, teamId),
+    ])
+      .then(([projectRows, stateRows]) => {
         if (!alive) return;
-        setProjects(rows);
-        setProjectIds(previous => previous.filter(id => rows.some(project => project.id === id)));
+        setProjects(projectRows);
+        setWorkflowStates(stateRows);
+        setProjectIds(previous => previous.filter(id => projectRows.some(project => project.id === id)));
+        setDeliveryRules(previous => Object.fromEntries(Object.entries(previous)
+          .filter(([projectId]) => projectRows.some(project => project.id === projectId))));
       })
-      .catch(() => { if (alive) setProjects([]); })
-      .finally(() => { if (alive) setLoading(value => ({ ...value, projects: false })); });
+      .catch(err => {
+        if (!alive) return;
+        setProjects([]);
+        setWorkflowStates([]);
+        setError(err.message);
+      })
+      .finally(() => { if (alive) setLoading(value => ({ ...value, projects: false, states: false })); });
     return () => { alive = false; };
   }, [linearKey, teamId]);
 
@@ -63,6 +77,16 @@ function PresetForm({ preset, linearKey, everhourKey, onSave, onCancel }) {
     return () => { alive = false; };
   }, [everhourKey]);
 
+  const setDeliveryState = (projectId, stateId) => {
+    const state = workflowStates.find(option => option.id === stateId);
+    setDeliveryRules(previous => {
+      const next = { ...previous };
+      if (!state) delete next[projectId];
+      else next[projectId] = { stateId: state.id, stateName: state.name };
+      return next;
+    });
+  };
+
   const save = () => {
     if (!name.trim()) return;
     onSave({
@@ -73,10 +97,15 @@ function PresetForm({ preset, linearKey, everhourKey, onSave, onCancel }) {
       teamName,
       projectIds,
       projectNames: projects.filter(project => projectIds.includes(project.id)).map(project => project.name),
+      deliveryRules,
       everhourProjectIds,
       everhourProjectNames: everhourProjects.filter(project => everhourProjectIds.includes(String(project.id))).map(project => project.name),
     });
   };
+
+  const deliveryProjects = projectIds.length
+    ? projects.filter(project => projectIds.includes(project.id))
+    : projects;
 
   return (
     <div className="preset-form-v2">
@@ -88,29 +117,55 @@ function PresetForm({ preset, linearKey, everhourKey, onSave, onCancel }) {
       <label>
         Team
         {!linearKey ? <span className="settings-note">Test the Linear connection to browse teams.</span> : loading.teams ? <span className="settings-note">Loading teams…</span> : (
-          <select value={teamId} onChange={event => { const id = event.target.value; setTeamId(id); setTeamName(teams.find(team => team.id === id)?.name || ''); setProjectIds([]); }}>
+          <select value={teamId} onChange={event => {
+            const id = event.target.value;
+            setTeamId(id);
+            setTeamName(teams.find(team => team.id === id)?.name || '');
+            setProjectIds([]);
+            setDeliveryRules({});
+          }}>
             <option value="">Demo data / no team</option>
             {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
           </select>
         )}
       </label>
       {teamId ? (
-        <div className="preset-project-group">
-          <div className="field-label">Linear projects <span>leave empty for all</span></div>
-          {loading.projects ? <span className="settings-note">Loading projects…</span> : (
-            <>
-              <input className="project-search" value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="Search projects" />
-              <div className="project-checklist-v2">
-                {projects.filter(project => project.name.toLowerCase().includes(projectSearch.toLowerCase())).map(project => (
-                  <label key={project.id}>
-                    <input type="checkbox" checked={projectIds.includes(project.id)} onChange={() => setProjectIds(previous => previous.includes(project.id) ? previous.filter(id => id !== project.id) : [...previous, project.id])} />
-                    {project.name}
+        <>
+          <div className="preset-project-group">
+            <div className="field-label">Linear projects <span>leave empty for all</span></div>
+            {loading.projects ? <span className="settings-note">Loading projects…</span> : (
+              <>
+                <input className="project-search" value={projectSearch} onChange={event => setProjectSearch(event.target.value)} placeholder="Search projects" />
+                <div className="project-checklist-v2">
+                  {projects.filter(project => project.name.toLowerCase().includes(projectSearch.toLowerCase())).map(project => (
+                    <label key={project.id}>
+                      <input type="checkbox" checked={projectIds.includes(project.id)} onChange={() => setProjectIds(previous => previous.includes(project.id) ? previous.filter(id => id !== project.id) : [...previous, project.id])} />
+                      {project.name}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="preset-project-group delivery-config-v2">
+            <div className="field-label">Delivered milestone <span>per project</span></div>
+            <p className="settings-note">Choose the workflow state that means “delivered”. Velocity and delivery metrics use the first time an issue reaches that state, even if it later moves to Prod. Leave a project on Linear completed to keep the current behavior.</p>
+            {loading.states || loading.projects ? <span className="settings-note">Loading workflow states…</span> : (
+              <div className="delivery-rule-list-v2">
+                {deliveryProjects.map(project => (
+                  <label key={project.id} className="delivery-rule-row-v2">
+                    <span>{project.name}</span>
+                    <select value={deliveryRules[project.id]?.stateId || ''} onChange={event => setDeliveryState(project.id, event.target.value)}>
+                      <option value="">Linear completed (default)</option>
+                      {workflowStates.map(state => <option key={state.id} value={state.id}>{state.name}</option>)}
+                    </select>
                   </label>
                 ))}
+                {!deliveryProjects.length ? <span className="settings-note">No Linear projects available for this team.</span> : null}
               </div>
-            </>
-          )}
-        </div>
+            )}
+          </div>
+        </>
       ) : null}
       <div className="preset-project-group">
         <div className="field-label">Everhour projects <span>optional budget tracking</span></div>
@@ -257,7 +312,7 @@ export default function SettingsModal({ apiKey, everhourApiKey, presets, onSave,
           </section>
           <section className="settings-section-v2">
             <div className="settings-section-heading">
-              <div><h3>Presets</h3><p>Saved combinations of Linear and Everhour projects.</p></div>
+              <div><h3>Presets</h3><p>Saved combinations of Linear and Everhour projects, including project-specific delivery milestones.</p></div>
               {!adding ? <button className="subtle-btn" type="button" onClick={() => setAdding(true)}><Plus size={14} aria-hidden="true" /> Add preset</button> : null}
             </div>
             <div className="preset-list-v2">
@@ -269,7 +324,7 @@ export default function SettingsModal({ apiKey, everhourApiKey, presets, onSave,
                     <>
                       <div>
                         <strong>{preset.name}</strong>
-                        <span>{preset.teamName || (preset.teamId ? 'Configured team' : 'Demo data')}{preset.projectNames?.length ? ` · ${preset.projectNames.join(', ')}` : preset.teamId ? ' · All projects' : ''}</span>
+                        <span>{preset.teamName || (preset.teamId ? 'Configured team' : 'Demo data')}{preset.projectNames?.length ? ` · ${preset.projectNames.join(', ')}` : preset.teamId ? ' · All projects' : ''}{Object.keys(preset.deliveryRules || {}).length ? ` · ${Object.keys(preset.deliveryRules).length} delivery rule${Object.keys(preset.deliveryRules).length === 1 ? '' : 's'}` : ''}</span>
                       </div>
                       <div className="preset-item-actions-v2">
                         <button className="icon-action" type="button" onClick={() => setEditingId(preset.id)} aria-label={`Edit ${preset.name}`}><Pencil size={15} aria-hidden="true" /></button>
