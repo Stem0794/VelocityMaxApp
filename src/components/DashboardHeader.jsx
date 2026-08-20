@@ -2,17 +2,14 @@ import { LogOut, Plus, RefreshCw, Settings } from 'lucide-react';
 
 function formatUpdatedAt(value) {
   if (!value) return '';
-  const timestamp = new Date(value).getTime();
-  if (Number.isNaN(timestamp)) return '';
-  const elapsed = Math.max(0, Date.now() - timestamp);
-  const minutes = Math.floor(elapsed / 60000);
-  if (minutes < 1) return 'Updated just now';
-  if (minutes < 60) return `Updated ${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Updated ${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `Updated ${days}d ago`;
-  return `Updated ${new Date(timestamp).toLocaleDateString()}`;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `Updated ${date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
 }
 
 function AutoRefreshControl({ value, onChange, mobile = false }) {
