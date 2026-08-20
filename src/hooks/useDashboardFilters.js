@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { detectQuickRange, getQuickRangeDates, isValidDateRange } from '../utils/date';
 import { filterDeliveredWindow, filterInventoryScope, reconcileStatuses } from '../dashboardState';
 
+const EMPTY_LIST = Object.freeze([]);
+
 function loadArray(key) {
   try { return JSON.parse(sessionStorage.getItem(key) || '[]'); } catch { return []; }
 }
@@ -15,8 +17,8 @@ export default function useDashboardFilters(data, activePreset) {
   const [dateTo, setDateTo] = useState(() => sessionStorage.getItem('vmDateTo') || '');
   const previousPresetId = useRef(null);
 
-  const loadedIssues = useMemo(() => data?.issues || [], [data?.issues]);
-  const workflowStates = useMemo(() => data?.workflowStates || [], [data?.workflowStates]);
+  const loadedIssues = data?.issues || EMPTY_LIST;
+  const workflowStates = data?.workflowStates || EMPTY_LIST;
   const uniqueProjects = useMemo(() => [...new Set(loadedIssues.map(issue => issue.project).filter(Boolean))].sort(), [loadedIssues]);
   const uniqueAssignees = useMemo(() => [...new Set(loadedIssues.map(issue => issue.assignee).filter(Boolean))].sort(), [loadedIssues]);
   const uniqueCurrentStatuses = useMemo(() => {
