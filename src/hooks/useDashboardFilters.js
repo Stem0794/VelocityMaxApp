@@ -68,6 +68,9 @@ export default function useDashboardFilters(data, activePreset) {
   const scopeIssues = useMemo(() => filterInventoryScope(loadedIssues, {
     selectedProject, selectedAssignee, selectedCurrentStatuses,
   }), [loadedIssues, selectedAssignee, selectedCurrentStatuses, selectedProject]);
+  const cycleScopeIssues = useMemo(() => filterInventoryScope(loadedIssues, {
+    selectedProject, selectedAssignee, selectedCurrentStatuses: EMPTY_LIST,
+  }), [loadedIssues, selectedAssignee, selectedProject]);
   const deliveredIssues = useMemo(() => filterDeliveredWindow(scopeIssues, dateFrom, dateTo, !rangeError), [dateFrom, dateTo, rangeError, scopeIssues]);
 
   const activeFilterCount = [
@@ -101,7 +104,7 @@ export default function useDashboardFilters(data, activePreset) {
     selectedProject, setSelectedProject, selectedAssignee, setSelectedAssignee,
     selectedCurrentStatuses, setSelectedCurrentStatuses, selectedStatuses, setSelectedStatuses,
     dateFrom, setDateFrom, dateTo, setDateTo, uniqueProjects, uniqueAssignees,
-    uniqueCurrentStatuses, allStatuses, scopeIssues, deliveredIssues, filteredIssues: scopeIssues,
+    uniqueCurrentStatuses, allStatuses, scopeIssues, cycleScopeIssues, deliveredIssues, filteredIssues: scopeIssues,
     loadedIssueCount: loadedIssues.length, scopeIssueCount: scopeIssues.length, deliveredIssueCount: deliveredIssues.length,
     rangeError, activeFilterCount, deliveryWindowActive, deliveryWindowLabel,
     quickRange, applyQuickRange, reset,

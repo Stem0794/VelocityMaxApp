@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { computeSprintBurndown } from '../computeCharts';
 import { DEFAULT_CHART_ORDER, normalizeChartOrder } from '../dashboardState';
 import IssuesTable from '../IssuesTable';
+import { prepareSprintBurndownIssues } from '../utils/sprintBurndown';
 import ChartCard from './ChartCard';
 import BurnupChart from './charts/BurnupChart';
 import BurndownChart from './charts/BurndownChart';
@@ -20,9 +21,35 @@ function loadChartOrder() {
   catch { return DEFAULT_CHART_ORDER; }
 }
 
+function cycleCatalog(issues) {
+  const map = new Map();
+  (issues || []).forEach(issue => {
+    if (issue.cycleNumber === '' || issue.cycleNumber == null) return;
+    if (!map.has(issue.cycleNumber)) {
+      map.set(issue.cycleNumber, {
+        number: issue.cycleNumber,
+        startsAt: issue.cycleStartsAt || '',
+        endsAt: issue.cycleEndsAt || '',
+      });
+    }
+  });
+  return [...map.values()].sort((a, b) => Number(b.number) - Number(a.number));
+}
+
+function activeCycleNumber(cycles) {
+  const now = new Date();
+  const active = cycles.find(cycle => {
+    const start = cycle.startsAt ? new Date(cycle.startsAt) : null;
+    const end = cycle.endsAt ? new Date(cycle.endsAt) : null;
+    return start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start <= now && now <= end;
+  });
+  return active?.number ?? cycles[0]?.number ?? null;
+}
+
 export default function DashboardCharts({
   metrics,
   issues,
+  burndownIssues = issues,
   selectedStatuses,
   setSelectedStatuses,
   loadingHistory,
@@ -35,12 +62,24 @@ export default function DashboardCharts({
   const [selectedCycle, setSelectedCycle] = useState('');
   const dragId = useRef(null);
   const activeOrder = visibleIds || chartOrder;
+  const burndownCycles = useMemo(() => cycleCatalog(burndownIssues), [burndownIssues]);
+  const currentBurndownCycle = useMemo(() => activeCycleNumber(burndownCycles), [burndownCycles]);
 
   useEffect(() => {
-    if (metrics.currentCycleNumber != null) setSelectedCycle(String(metrics.currentCycleNumber));
-  }, [metrics.currentCycleNumber]);
+    if (currentBurndownCycle != null) {
+      setSelectedCycle(previous => burndownCycles.some(cycle => String(cycle.number) === String(previous))
+        ? previous
+        : String(currentBurndownCycle));
+    } else {
+      setSelectedCycle('');
+    }
+  }, [burndownCycles, currentBurndownCycle]);
 
-  const burndownData = useMemo(() => computeSprintBurndown(issues, selectedCycle), [issues, selectedCycle]);
+  const preparedBurndown = useMemo(() => prepareSprintBurndownIssues(burndownIssues, selectedCycle), [burndownIssues, selectedCycle]);
+  const burndownData = useMemo(() => computeSprintBurndown(preparedBurndown.issues, selectedCycle), [preparedBurndown, selectedCycle]);
+  const burndownUnit = preparedBurndown.unit;
+  const burndownUsesPoints = burndownUnit === 'points';
+
   const statusBreakdownData = useMemo(() => {
     const statuses = selectedStatuses.length ? selectedStatuses : metrics.allStatuses;
     return statuses.map(status => {
@@ -126,7 +165,7 @@ export default function DashboardCharts({
       case 'burnup':
         return <ChartCard key={id} {...cardProps(id, 'Burn-up')} summary="Cumulative scope versus delivered story points." details="Scope rises when estimated issues are created. Delivered work rises when issues reach their configured project milestone. A widening gap signals growing remaining scope."><BurnupChart data={metrics.burnupData} /></ChartCard>;
       case 'burndown':
-        return <ChartCard key={id} {...cardProps(id, 'Sprint burndown', { actions: metrics.uniqueCycles.length ? <select className="chart-inline-select" value={selectedCycle} onChange={event => setSelectedCycle(event.target.value)} aria-label="Sprint cycle">{metrics.uniqueCycles.map(cycle => <option key={cycle.number} value={cycle.number}>Cycle {cycle.number}{cycle.number === metrics.currentCycleNumber ? ' · current' : ''}</option>)}</select> : null })} summary="Remaining points versus ideal sprint pace." details="A flat remaining line means no point-bearing work reached its delivery milestone during that period. Falling faster than ideal means the sprint is ahead of a linear pace.">{metrics.uniqueCycles.length ? <BurndownChart data={burndownData} /> : <div className="chart-empty">No cycle data in the current scope.</div>}</ChartCard>;
+        return <ChartCard key={id} {...cardProps(id, 'Sprint burndown', { actions: burndownCycles.length ? <select className="chart-inline-select" value={selectedCycle} onChange={event => setSelectedCycle(event.target.value)} aria-label="Sprint cycle">{burndownCycles.map(cycle => <option key={cycle.number} value={cycle.number}>Cycle {cycle.number}{cycle.number === currentBurndownCycle ? ' · current' : ''}</option>)}</select> : null })} summary={`Remaining ${burndownUnit} versus ideal sprint pace.`} details={`The burndown always uses the full selected cycle for the current project/assignee scope, regardless of current-status or delivery-window filters. Work burns on Linear completion. ${burndownUsesPoints ? 'Story points are used because this cycle contains estimates.' : 'This cycle has no story-point estimates, so VelocityMAX falls back to issue count.'}`}>{burndownCycles.length ? <BurndownChart data={burndownData} unit={burndownUnit} /> : <div className="chart-empty">No cycle data for the current project / assignee scope.</div>}</ChartCard>;
       case 'lead-time':
         return <ChartCard key={id} {...cardProps(id, 'Lead-time distribution')} summary="Time from issue creation to delivery." details="Lead time ends when the issue first reaches its configured delivery milestone. Buckets are inclusive at their displayed upper bounds: ≤3d, >3–7d, >7–14d, >14–30d and >30d."><LeadTimeChart data={metrics.leadTimeHistogram} /></ChartCard>;
       case 'flow-efficiency':

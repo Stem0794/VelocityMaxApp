@@ -40,6 +40,18 @@ test('inventory scope filters current ownership without hiding old issues by cre
   assert.deepEqual(result.map(issue => issue.id), ['OLD-1']);
 });
 
+test('empty status selection preserves every workflow state for cycle calculations', () => {
+  const issues = [
+    { id: 'A', project: 'App', assignee: 'Ada', currentStatus: 'Todo' },
+    { id: 'B', project: 'App', assignee: 'Ada', currentStatus: 'In Progress' },
+    { id: 'C', project: 'App', assignee: 'Ada', currentStatus: 'Done' },
+  ];
+  const cycleScope = filterInventoryScope(issues, { selectedProject: 'App', selectedAssignee: 'Ada', selectedCurrentStatuses: [] });
+  const currentStatusScope = filterInventoryScope(issues, { selectedProject: 'App', selectedAssignee: 'Ada', selectedCurrentStatuses: ['In Progress'] });
+  assert.deepEqual(cycleScope.map(issue => issue.id), ['A', 'B', 'C']);
+  assert.deepEqual(currentStatusScope.map(issue => issue.id), ['B']);
+});
+
 test('delivery window uses deliveredAt rather than createdAt', () => {
   const issues = [
     { id: 'OLD-DELIVERED', createdAt: '2025-01-01T00:00:00Z', deliveredAt: '2026-08-18T10:00:00Z' },
