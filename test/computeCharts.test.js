@@ -35,6 +35,23 @@ test('burndown uses cycle metadata and reaches ideal zero on final day', () => {
   assert.equal(data.at(-1).ideal, 0);
 });
 
+test('burndown uses Linear completion instead of project delivery milestone', () => {
+  const data = computeSprintBurndown([
+    issue({
+      points: 5,
+      cycleNumber: 7,
+      cycleStartsAt: '2026-01-05T00:00:00Z',
+      cycleEndsAt: '2026-01-08T23:59:59Z',
+      completedAt: '2026-01-06T12:00:00Z',
+      deliveredAt: '2026-01-06T12:00:00Z',
+      linearCompletedAt: '2026-01-08T12:00:00Z',
+    }),
+  ], 7);
+  assert.equal(data[1].remaining, 5);
+  assert.equal(data[2].remaining, 5);
+  assert.equal(data[3].remaining, 0);
+});
+
 test('cumulative flow classifies issue states over time', () => {
   const data = computeCumulativeFlow([
     issue({ createdAt: '2026-01-05T00:00:00Z', startedAt: '2026-01-06T00:00:00Z', completedAt: '2026-01-19T00:00:00Z' }),
