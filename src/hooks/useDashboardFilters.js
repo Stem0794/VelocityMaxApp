@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { detectQuickRange, getQuickRangeDates, isValidDateRange } from '../utils/date';
-import { reconcileStatuses } from '../dashboardState';
+import { filterDeliveredWindow, filterInventoryScope, reconcileStatuses } from '../dashboardState';
+
+const EMPTY_LIST = Object.freeze([]);
 
 function loadArray(key) {
   try { return JSON.parse(sessionStorage.getItem(key) || '[]'); } catch { return []; }
@@ -15,18 +17,20 @@ export default function useDashboardFilters(data, activePreset) {
   const [dateTo, setDateTo] = useState(() => sessionStorage.getItem('vmDateTo') || '');
   const previousPresetId = useRef(null);
 
-  const uniqueProjects = useMemo(() => [...new Set((data?.issues || []).map(issue => issue.project).filter(Boolean))].sort(), [data]);
-  const uniqueAssignees = useMemo(() => [...new Set((data?.issues || []).map(issue => issue.assignee).filter(Boolean))].sort(), [data]);
+  const loadedIssues = data?.issues || EMPTY_LIST;
+  const workflowStates = data?.workflowStates || EMPTY_LIST;
+  const uniqueProjects = useMemo(() => [...new Set(loadedIssues.map(issue => issue.project).filter(Boolean))].sort(), [loadedIssues]);
+  const uniqueAssignees = useMemo(() => [...new Set(loadedIssues.map(issue => issue.assignee).filter(Boolean))].sort(), [loadedIssues]);
   const uniqueCurrentStatuses = useMemo(() => {
-    if (data?.workflowStates?.length) return [...data.workflowStates];
-    return [...new Set((data?.issues || []).map(issue => issue.currentStatus).filter(Boolean))].sort();
-  }, [data]);
+    if (workflowStates.length) return [...workflowStates];
+    return [...new Set(loadedIssues.map(issue => issue.currentStatus).filter(Boolean))].sort();
+  }, [loadedIssues, workflowStates]);
   const allStatuses = useMemo(() => {
-    if (data?.workflowStates?.length) return [...data.workflowStates];
+    if (workflowStates.length) return [...workflowStates];
     const statuses = new Set();
-    (data?.issues || []).forEach(issue => Object.keys(issue.timeByStatus || {}).forEach(status => statuses.add(status)));
+    loadedIssues.forEach(issue => Object.keys(issue.timeByStatus || {}).forEach(status => statuses.add(status)));
     return [...statuses].sort();
-  }, [data]);
+  }, [loadedIssues, workflowStates]);
 
   useEffect(() => setSelectedStatuses(previous => reconcileStatuses(previous, allStatuses)), [allStatuses]);
 
@@ -61,19 +65,22 @@ export default function useDashboardFilters(data, activePreset) {
   }, [dateFrom, dateTo]);
 
   const rangeError = isValidDateRange(dateFrom, dateTo) ? '' : 'Start date must be before or equal to end date.';
-  const filteredIssues = useMemo(() => (data?.issues || []).filter(issue => {
-    if (selectedProject !== 'All' && issue.project !== selectedProject) return false;
-    if (selectedAssignee !== 'All' && issue.assignee !== selectedAssignee) return false;
-    if (selectedCurrentStatuses.length && !selectedCurrentStatuses.includes(issue.currentStatus)) return false;
-    if (!rangeError && dateFrom && new Date(issue.createdAt) < new Date(`${dateFrom}T00:00:00`)) return false;
-    if (!rangeError && dateTo && new Date(issue.createdAt) > new Date(`${dateTo}T23:59:59.999`)) return false;
-    return true;
-  }), [data, dateFrom, dateTo, rangeError, selectedAssignee, selectedCurrentStatuses, selectedProject]);
+  const scopeIssues = useMemo(() => filterInventoryScope(loadedIssues, {
+    selectedProject, selectedAssignee, selectedCurrentStatuses,
+  }), [loadedIssues, selectedAssignee, selectedCurrentStatuses, selectedProject]);
+  const deliveredIssues = useMemo(() => filterDeliveredWindow(scopeIssues, dateFrom, dateTo, !rangeError), [dateFrom, dateTo, rangeError, scopeIssues]);
 
   const activeFilterCount = [
     selectedProject !== 'All', selectedAssignee !== 'All', selectedCurrentStatuses.length > 0, Boolean(dateFrom || dateTo),
   ].filter(Boolean).length;
   const quickRange = detectQuickRange(dateFrom, dateTo);
+  const deliveryWindowActive = Boolean(dateFrom || dateTo);
+  const deliveryWindowLabel = quickRange === 'all' || !deliveryWindowActive
+    ? 'All time'
+    : quickRange === '30d' ? 'Last 30 days'
+      : quickRange === '90d' ? 'Last 90 days'
+        : quickRange === 'quarter' ? 'This quarter'
+          : [dateFrom, dateTo].filter(Boolean).join(' → ');
 
   const applyQuickRange = range => {
     const dates = getQuickRangeDates(range);
@@ -94,7 +101,9 @@ export default function useDashboardFilters(data, activePreset) {
     selectedProject, setSelectedProject, selectedAssignee, setSelectedAssignee,
     selectedCurrentStatuses, setSelectedCurrentStatuses, selectedStatuses, setSelectedStatuses,
     dateFrom, setDateFrom, dateTo, setDateTo, uniqueProjects, uniqueAssignees,
-    uniqueCurrentStatuses, allStatuses, filteredIssues, rangeError, activeFilterCount,
+    uniqueCurrentStatuses, allStatuses, scopeIssues, deliveredIssues, filteredIssues: scopeIssues,
+    loadedIssueCount: loadedIssues.length, scopeIssueCount: scopeIssues.length, deliveredIssueCount: deliveredIssues.length,
+    rangeError, activeFilterCount, deliveryWindowActive, deliveryWindowLabel,
     quickRange, applyQuickRange, reset,
     savedDefaults: { defaultStatuses: selectedCurrentStatuses, defaultDateFrom: dateFrom, defaultDateTo: dateTo },
   };

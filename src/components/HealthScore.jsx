@@ -49,7 +49,7 @@ function drawSnapshot({ healthScore, presetName, team, metrics }) {
   ctx.fillText('TEAM HEALTH SCORE', 48, 244);
 
   const kpis = [
-    ['Issues', metrics.totalIssues], ['Completed', metrics.completedIssues],
+    ['Issues', metrics.totalIssues], ['Delivered', metrics.completedIssues],
     ['Story points', metrics.totalPoints], ['Avg cycle', metrics.avgCycleTime == null ? '—' : `${metrics.avgCycleTime}d`],
   ];
   kpis.forEach(([label, value], index) => {

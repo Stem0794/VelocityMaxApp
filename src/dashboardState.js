@@ -20,3 +20,34 @@ export function reconcileStatuses(selected, available) {
   const next = selected.filter(status => available.includes(status));
   return next.length ? next : [...available];
 }
+
+function timestamp(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  const time = date.getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+export function filterInventoryScope(issues, {
+  selectedProject = 'All', selectedAssignee = 'All', selectedCurrentStatuses = [],
+} = {}) {
+  return (issues || []).filter(issue => {
+    if (selectedProject !== 'All' && issue.project !== selectedProject) return false;
+    if (selectedAssignee !== 'All' && issue.assignee !== selectedAssignee) return false;
+    if (selectedCurrentStatuses.length && !selectedCurrentStatuses.includes(issue.currentStatus)) return false;
+    return true;
+  });
+}
+
+export function filterDeliveredWindow(issues, dateFrom = '', dateTo = '', rangeValid = true) {
+  if (!rangeValid) return (issues || []).filter(issue => timestamp(issue.deliveredAt || issue.completedAt) != null);
+  const from = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+  const to = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+  return (issues || []).filter(issue => {
+    const delivered = timestamp(issue.deliveredAt || issue.completedAt);
+    if (delivered == null) return false;
+    if (from != null && delivered < from) return false;
+    if (to != null && delivered > to) return false;
+    return true;
+  });
+}

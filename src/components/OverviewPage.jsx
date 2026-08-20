@@ -9,11 +9,14 @@ function pulseCopy(score) {
   return ['Delivery needs attention.', 'Use the signals below to find where work is slowing down or becoming less predictable.'];
 }
 
-function completion(total, completed) {
-  return total ? Math.round((completed / total) * 100) : 0;
+function deliveryRate(total, delivered) {
+  return total ? Math.round((delivered / total) * 100) : 0;
 }
 
-export default function OverviewPage({ metrics, issues, team, presetName, budgetData, budgetError, budgetConfigured, onNavigate, onOpenScope }) {
+export default function OverviewPage({
+  metrics, issues, team, presetName, budgetData, budgetError, budgetConfigured,
+  deliveryWindowLabel, onNavigate, onOpenScope,
+}) {
   const score = metrics.healthScore?.overall ?? 0;
   const [headline, body] = pulseCopy(score);
   const factors = metrics.healthScore?.factors || [];
@@ -36,16 +39,16 @@ export default function OverviewPage({ metrics, issues, team, presetName, budget
       </section>
 
       <section className="metric-ribbon" aria-label="Key metrics">
-        <div><span>Completion</span><strong>{completion(metrics.totalIssues, metrics.completedIssues)}%</strong><small>{metrics.completedIssues} of {metrics.totalIssues} issues</small></div>
-        <div><span>Delivered</span><strong>{metrics.completedPoints}</strong><small>story points</small></div>
-        <div><span>Cycle time</span><strong>{metrics.avgCycleTime == null ? '—' : `${metrics.avgCycleTime}d`}</strong><small>{metrics.medianCycleTime == null ? 'No median yet' : `Median ${metrics.medianCycleTime}d`}</small></div>
-        <div><span>In scope</span><strong>{metrics.totalIssues}</strong><small>issues tracked</small></div>
+        <div><span>Delivered overall</span><strong>{deliveryRate(metrics.totalIssues, metrics.completedIssues)}%</strong><small>{metrics.completedIssues} of {metrics.totalIssues} inventory issues</small></div>
+        <div><span>Delivered in window</span><strong>{metrics.deliveredWindowPoints}</strong><small>{metrics.deliveredWindowIssues} issues · {deliveryWindowLabel || 'All time'}</small></div>
+        <div><span>Cycle time</span><strong>{metrics.avgCycleTime == null ? '—' : `${metrics.avgCycleTime}d`}</strong><small>{metrics.medianCycleTime == null ? `No deliveries · ${deliveryWindowLabel || 'All time'}` : `Median ${metrics.medianCycleTime}d · ${deliveryWindowLabel || 'All time'}`}</small></div>
+        <div><span>In scope</span><strong>{metrics.totalIssues}</strong><small>current inventory</small></div>
       </section>
 
       <section className="overview-signals">
         <div className="section-intro"><span>Signals</span><h2>What stands out</h2><p>VelocityMAX surfaces the strongest and weakest parts of the current delivery system.</p></div>
         <div className="signal-grid">
-          <article className="signal-card positive"><span>Strongest signal</span><strong>{strongest?.label || 'No signal yet'}</strong><p>{strongest ? `${strongest.value} · score ${strongest.score}/100` : 'More completed work is needed before this can be scored.'}</p></article>
+          <article className="signal-card positive"><span>Strongest signal</span><strong>{strongest?.label || 'No signal yet'}</strong><p>{strongest ? `${strongest.value} · score ${strongest.score}/100` : 'More delivered work is needed before this can be scored.'}</p></article>
           <article className="signal-card attention"><span>Needs attention</span><strong>{weakest?.label || 'No signal yet'}</strong><p>{weakest ? `${weakest.value} · score ${weakest.score}/100` : 'No weak signal is available in this scope.'}</p></article>
         </div>
       </section>
@@ -53,7 +56,7 @@ export default function OverviewPage({ metrics, issues, team, presetName, budget
       {budgetConfigured || budgetError ? <BudgetOverview budgetData={budgetData} error={budgetError} configured={budgetConfigured} /> : null}
 
       <section className="overview-section">
-        <div className="section-intro"><span>Trend</span><h2>Delivery momentum</h2><p>Two views only: recent throughput and the forecast for remaining scope.</p></div>
+        <div className="section-intro"><span>Trend</span><h2>Delivery momentum</h2><p>Throughput uses deliveries in {deliveryWindowLabel || 'the selected window'}; forecast keeps the full remaining inventory in scope.</p></div>
         <DashboardCharts metrics={metrics} issues={issues} selectedStatuses={[]} setSelectedStatuses={() => {}} loadingHistory={false} historyProgress={{ done: 0, total: 0, failed: 0 }} visibleIds={['velocity', 'prediction']} reorderable={false} />
       </section>
 

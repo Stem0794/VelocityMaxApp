@@ -12,9 +12,9 @@ export default function CycleComparisonChart({ data }) {
         <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={value => `${value}%`} {...axisProps} width={38} />
         <Tooltip content={<ChartTooltip />} />
         <Legend wrapperStyle={{ fontSize: 11 }} />
-        <Bar yAxisId="left" dataKey="points" name="Points" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
-        <Bar yAxisId="left" dataKey="tickets" name="Tickets" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
-        <Line yAxisId="right" dataKey="completionPct" name="Completion %" stroke="var(--chart-green)" strokeWidth={2} dot={{ r: 3 }} />
+        <Bar yAxisId="left" dataKey="points" name="Delivered points" fill="var(--chart-purple)" radius={[4, 4, 0, 0]} />
+        <Bar yAxisId="left" dataKey="tickets" name="Delivered tickets" fill="var(--chart-blue)" radius={[4, 4, 0, 0]} />
+        <Line yAxisId="right" dataKey="completionPct" name="Delivery %" stroke="var(--chart-green)" strokeWidth={2} dot={{ r: 3 }} />
       </ComposedChart>
     </ResponsiveContainer>
   );

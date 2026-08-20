@@ -119,7 +119,12 @@ export default function App() {
 
   const dashboard = useDashboardData({ isAuthenticated, activePreset, apiKey, everhourApiKey, autoRefreshInterval });
   const filters = useDashboardFilters(dashboard.data, activePreset);
-  const metrics = useDashboardMetrics(filters.filteredIssues, dashboard.data?.lastUpdated, dashboard.data?.workflowStates || []);
+  const metrics = useDashboardMetrics(
+    filters.scopeIssues,
+    dashboard.data?.lastUpdated,
+    dashboard.data?.workflowStates || [],
+    filters.deliveredIssues,
+  );
 
   const navigateView = view => {
     if (!VALID_VIEWS.has(view)) return;
@@ -162,7 +167,7 @@ export default function App() {
 
   const sharedMetricProps = {
     metrics,
-    issues: filters.filteredIssues,
+    issues: filters.scopeIssues,
     selectedStatuses: filters.selectedStatuses,
     setSelectedStatuses: filters.setSelectedStatuses,
     loadingHistory: dashboard.loadingHistory,
@@ -182,6 +187,12 @@ export default function App() {
         onAddPreset={() => openSettings(true)}
         onOpenScope={() => setScopeOpen(true)}
         activeFilterCount={filters.activeFilterCount}
+        loadedIssueCount={filters.loadedIssueCount}
+        scopeIssueCount={filters.scopeIssueCount}
+        deliveredIssueCount={filters.deliveredIssueCount}
+        deliveryWindowActive={filters.deliveryWindowActive}
+        deliveryWindowLabel={filters.deliveryWindowLabel}
+        isLinearWorkspace={Boolean(activePreset?.teamId && apiKey)}
         onSettings={() => openSettings(false)}
         onSignOut={signOut}
         onRefresh={dashboard.refresh}
@@ -194,10 +205,10 @@ export default function App() {
         {dashboard.error ? <div className="workspace-notice" role="status"><AlertTriangle size={16} /> Refresh failed. Existing data remains available.</div> : null}
         {dashboard.historyWarning ? <div className="workspace-notice" role="status"><AlertTriangle size={16} /> {dashboard.historyWarning}</div> : null}
 
-        {activeView === 'overview' ? <OverviewPage {...sharedMetricProps} team={dashboard.data?.team} presetName={activePreset?.name} budgetData={dashboard.budgetData} budgetError={dashboard.budgetError} budgetConfigured={Boolean(activePreset?.everhourProjectIds?.length)} onNavigate={navigateView} onOpenScope={() => setScopeOpen(true)} /> : null}
-        {activeView === 'delivery' ? <MetricPage {...sharedMetricProps} eyebrow="Delivery system" title="Throughput and scope" description="Understand what the team finishes, how scope changes and where the current trajectory leads." chartIds={DELIVERY_CHARTS} /> : null}
-        {activeView === 'flow' ? <MetricPage {...sharedMetricProps} eyebrow="Flow system" title="Where work slows down" description="Inspect cycle time, lead time, workflow inventory and time spent in each state." chartIds={FLOW_CHARTS} /> : null}
-        {activeView === 'issues' ? <div className="issues-page"><section className="metric-page-intro"><span className="page-eyebrow">Work inventory</span><h2>Issues</h2><p>Search, sort and export the exact work behind every metric in this workspace.</p></section><section className="issues-workspace"><IssuesTable issues={filters.filteredIssues} /></section></div> : null}
+        {activeView === 'overview' ? <OverviewPage {...sharedMetricProps} team={dashboard.data?.team} presetName={activePreset?.name} budgetData={dashboard.budgetData} budgetError={dashboard.budgetError} budgetConfigured={Boolean(activePreset?.everhourProjectIds?.length)} deliveryWindowLabel={filters.deliveryWindowLabel} onNavigate={navigateView} onOpenScope={() => setScopeOpen(true)} /> : null}
+        {activeView === 'delivery' ? <MetricPage {...sharedMetricProps} eyebrow="Delivery system" title="Throughput and scope" description={`Throughput and cycle outcomes use deliveries in ${filters.deliveryWindowLabel}. Remaining scope stays visible for forecasting.`} chartIds={DELIVERY_CHARTS} /> : null}
+        {activeView === 'flow' ? <MetricPage {...sharedMetricProps} eyebrow="Flow system" title="Where work slows down" description={`Current workflow inventory is independent of issue creation date. Cycle and lead-time outcomes use deliveries in ${filters.deliveryWindowLabel}.`} chartIds={FLOW_CHARTS} /> : null}
+        {activeView === 'issues' ? <div className="issues-page"><section className="metric-page-intro"><span className="page-eyebrow">Work inventory</span><h2>Issues</h2><p>Search, sort and export the current project / assignee / status scope. Delivery date windows do not hide older tickets from this inventory.</p></section><section className="issues-workspace"><IssuesTable issues={filters.scopeIssues} /></section></div> : null}
       </ProductShell>
     </>
   );
