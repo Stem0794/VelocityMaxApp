@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [ui-redesign-foundations, feature/project-delivery-milestones]
+    branches: [ui-redesign-foundations]
 permissions:
   contents: read
 jobs:
