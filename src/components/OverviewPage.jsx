@@ -39,8 +39,8 @@ export default function OverviewPage({
       </section>
 
       <section className="metric-ribbon" aria-label="Key metrics">
-        <div><span>Delivery rate</span><strong>{deliveryRate(metrics.totalIssues, metrics.completedIssues)}%</strong><small>{metrics.completedIssues} of {metrics.totalIssues} issues delivered overall</small></div>
-        <div><span>Delivered</span><strong>{metrics.deliveredWindowPoints}</strong><small>{metrics.deliveredWindowIssues} issues · {deliveryWindowLabel || 'All time'}</small></div>
+        <div><span>Delivered overall</span><strong>{deliveryRate(metrics.totalIssues, metrics.completedIssues)}%</strong><small>{metrics.completedIssues} of {metrics.totalIssues} inventory issues</small></div>
+        <div><span>Delivered in window</span><strong>{metrics.deliveredWindowPoints}</strong><small>{metrics.deliveredWindowIssues} issues · {deliveryWindowLabel || 'All time'}</small></div>
         <div><span>Cycle time</span><strong>{metrics.avgCycleTime == null ? '—' : `${metrics.avgCycleTime}d`}</strong><small>{metrics.medianCycleTime == null ? `No deliveries · ${deliveryWindowLabel || 'All time'}` : `Median ${metrics.medianCycleTime}d · ${deliveryWindowLabel || 'All time'}`}</small></div>
         <div><span>In scope</span><strong>{metrics.totalIssues}</strong><small>current inventory</small></div>
       </section>
