@@ -15,19 +15,20 @@ export default function useDashboardFilters(data, activePreset) {
   const [dateTo, setDateTo] = useState(() => sessionStorage.getItem('vmDateTo') || '');
   const previousPresetId = useRef(null);
 
-  const loadedIssues = data?.issues || [];
+  const loadedIssues = useMemo(() => data?.issues || [], [data?.issues]);
+  const workflowStates = useMemo(() => data?.workflowStates || [], [data?.workflowStates]);
   const uniqueProjects = useMemo(() => [...new Set(loadedIssues.map(issue => issue.project).filter(Boolean))].sort(), [loadedIssues]);
   const uniqueAssignees = useMemo(() => [...new Set(loadedIssues.map(issue => issue.assignee).filter(Boolean))].sort(), [loadedIssues]);
   const uniqueCurrentStatuses = useMemo(() => {
-    if (data?.workflowStates?.length) return [...data.workflowStates];
+    if (workflowStates.length) return [...workflowStates];
     return [...new Set(loadedIssues.map(issue => issue.currentStatus).filter(Boolean))].sort();
-  }, [data?.workflowStates, loadedIssues]);
+  }, [loadedIssues, workflowStates]);
   const allStatuses = useMemo(() => {
-    if (data?.workflowStates?.length) return [...data.workflowStates];
+    if (workflowStates.length) return [...workflowStates];
     const statuses = new Set();
     loadedIssues.forEach(issue => Object.keys(issue.timeByStatus || {}).forEach(status => statuses.add(status)));
     return [...statuses].sort();
-  }, [data?.workflowStates, loadedIssues]);
+  }, [loadedIssues, workflowStates]);
 
   useEffect(() => setSelectedStatuses(previous => reconcileStatuses(previous, allStatuses)), [allStatuses]);
 
