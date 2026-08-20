@@ -2,6 +2,19 @@ import { Filter, RotateCcw, Save } from 'lucide-react';
 import { useState } from 'react';
 import MultiSelectDropdown from './MultiSelectDropdown';
 
+function FilterActions({ filters, onSaveDefaults, canSaveDefaults }) {
+  return (
+    <>
+      <button className="subtle-btn" type="button" onClick={filters.reset} disabled={!filters.activeFilterCount}>
+        <RotateCcw size={14} aria-hidden="true" /> Reset
+      </button>
+      <button className="subtle-btn" type="button" onClick={onSaveDefaults} disabled={!canSaveDefaults || Boolean(filters.rangeError)}>
+        <Save size={14} aria-hidden="true" /> Save defaults
+      </button>
+    </>
+  );
+}
+
 export default function DashboardFilters({ filters, onSaveDefaults, canSaveDefaults }) {
   const [expanded, setExpanded] = useState(false);
   const ranges = [
@@ -23,12 +36,9 @@ export default function DashboardFilters({ filters, onSaveDefaults, canSaveDefau
             <Filter size={15} aria-hidden="true" />
             {expanded ? 'Hide' : 'Show'} filters
           </button>
-          <button className="subtle-btn" type="button" onClick={filters.reset} disabled={!filters.activeFilterCount}>
-            <RotateCcw size={14} aria-hidden="true" /> Reset
-          </button>
-          <button className="subtle-btn" type="button" onClick={onSaveDefaults} disabled={!canSaveDefaults || Boolean(filters.rangeError)}>
-            <Save size={14} aria-hidden="true" /> Save defaults
-          </button>
+          <div className="filter-desktop-actions">
+            <FilterActions filters={filters} onSaveDefaults={onSaveDefaults} canSaveDefaults={canSaveDefaults} />
+          </div>
         </div>
       </div>
 
@@ -79,6 +89,9 @@ export default function DashboardFilters({ filters, onSaveDefaults, canSaveDefau
           <label htmlFor="filter-to">To</label>
           <input id="filter-to" type="date" value={filters.dateTo} onChange={event => filters.setDateTo(event.target.value)} aria-invalid={Boolean(filters.rangeError)} />
         </div>
+      </div>
+      <div className="filter-mobile-actions">
+        <FilterActions filters={filters} onSaveDefaults={onSaveDefaults} canSaveDefaults={canSaveDefaults} />
       </div>
       {filters.rangeError ? <p className="inline-error" role="alert">{filters.rangeError}</p> : null}
     </section>

@@ -1,9 +1,37 @@
 import { LogOut, Plus, RefreshCw, Settings } from 'lucide-react';
 
+function formatUpdatedAt(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `Updated ${date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
+}
+
+function AutoRefreshControl({ value, onChange, mobile = false }) {
+  return (
+    <label className={`auto-refresh-control ${mobile ? 'auto-refresh-mobile' : 'auto-refresh-desktop'}`}>
+      <span>Auto refresh</span>
+      <select value={value} onChange={event => onChange(event.target.value)} aria-label="Auto refresh interval">
+        <option value="off">Off</option>
+        <option value="5m">5 min</option>
+        <option value="15m">15 min</option>
+        <option value="30m">30 min</option>
+      </select>
+    </label>
+  );
+}
+
 export default function DashboardHeader({
   presets, activePresetId, onSelectPreset, onAddPreset, onSettings, onSignOut,
   onRefresh, refreshing, data, loadingHistory, historyProgress, autoRefreshInterval, onAutoRefreshChange,
 }) {
+  const updatedLabel = formatUpdatedAt(data?.lastUpdated);
+
   return (
     <header className="dashboard-header">
       <div className="app-bar">
@@ -13,22 +41,12 @@ export default function DashboardHeader({
             <div className="brand-name">VelocityMAX</div>
             <div className="brand-context">
               <span>{data?.team || 'Engineering dashboard'}</span>
-              {data?.lastUpdated ? (
-                <span className="sync-meta">Updated {new Date(data.lastUpdated).toLocaleString()}</span>
-              ) : null}
+              {updatedLabel ? <span className="sync-meta">{updatedLabel}</span> : null}
             </div>
           </div>
         </div>
         <div className="app-actions" aria-label="Dashboard actions">
-          <label className="auto-refresh-control">
-            <span>Auto refresh</span>
-            <select value={autoRefreshInterval} onChange={event => onAutoRefreshChange(event.target.value)} aria-label="Auto refresh interval">
-              <option value="off">Off</option>
-              <option value="5m">5 min</option>
-              <option value="15m">15 min</option>
-              <option value="30m">30 min</option>
-            </select>
-          </label>
+          <AutoRefreshControl value={autoRefreshInterval} onChange={onAutoRefreshChange} />
           <button className="action-btn" type="button" onClick={onRefresh} disabled={refreshing} title="Refresh data">
             <RefreshCw size={16} className={refreshing ? 'spin-icon' : ''} aria-hidden="true" />
             <span className="action-label">Refresh</span>
@@ -61,6 +79,7 @@ export default function DashboardHeader({
           <Plus size={14} aria-hidden="true" />
           Preset
         </button>
+        <AutoRefreshControl value={autoRefreshInterval} onChange={onAutoRefreshChange} mobile />
       </div>
 
       {loadingHistory ? (

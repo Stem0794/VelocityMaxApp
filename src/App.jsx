@@ -47,8 +47,9 @@ function LoginScreen({ onAuthenticated, onDemo }) {
       const element = document.getElementById('google-signin-btn');
       if (!element || !window.google?.accounts?.id) return;
       element.replaceChildren();
+      const width = Math.min(360, Math.max(240, element.clientWidth || 280));
       window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredential });
-      window.google.accounts.id.renderButton(element, { theme: 'filled_black', size: 'large', text: 'signin_with', shape: 'rectangular', width: 280 });
+      window.google.accounts.id.renderButton(element, { theme: 'filled_black', size: 'large', text: 'signin_with', shape: 'rectangular', width });
     };
     if (window.google?.accounts?.id) {
       init();

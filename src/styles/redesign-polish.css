@@ -1,0 +1,437 @@
+:root {
+  --text-muted: #8290a3;
+}
+
+body {
+  overflow-x: hidden;
+  background-attachment: scroll;
+}
+
+button:active {
+  transform: none;
+}
+
+.dashboard-header {
+  margin: -20px -8px 14px;
+  padding: 12px 8px 8px;
+  background: rgba(7, 17, 31, .95);
+  border-bottom: 1px solid rgba(148, 163, 184, .1);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .14);
+}
+
+.app-bar {
+  min-height: 54px;
+  padding-bottom: 9px;
+}
+
+.brand-name {
+  font-size: 18px;
+}
+
+.brand-context,
+.action-btn,
+.preset-tab,
+.preset-add-btn {
+  font-size: 12px;
+}
+
+.auto-refresh-mobile {
+  display: none;
+}
+
+.section-eyebrow,
+.filter-field > label,
+.field-label,
+.kpi-label-v2 {
+  font-size: 11px;
+}
+
+.filter-title-row h2,
+.section-heading-v2 h2 {
+  font-size: 17px;
+}
+
+.subtle-btn,
+.filter-mobile-toggle {
+  min-height: 36px;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+.filter-desktop-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.filter-mobile-actions {
+  display: none;
+}
+
+.filter-field select,
+.filter-field input,
+.multiselect-btn,
+.chart-inline-select,
+.settings-section-v2 input,
+.settings-section-v2 select,
+.preset-form-v2 input,
+.preset-form-v2 select {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.quick-ranges button {
+  min-height: 32px;
+  font-size: 11px;
+}
+
+.multiselect-option {
+  min-height: 36px;
+  font-size: 12px;
+}
+
+.inline-error,
+.inline-warning {
+  font-size: 12px;
+}
+
+.kpi-card-v2 {
+  min-height: 96px;
+  padding: 14px 16px;
+}
+
+.kpi-value-v2 {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-context {
+  font-size: 12px;
+}
+
+.health-factor-top {
+  font-size: 10.5px;
+}
+
+.health-factor-value-v2 {
+  font-size: 13px;
+}
+
+.health-factor-track {
+  height: 4px;
+}
+
+.health-export-error {
+  position: static;
+  grid-column: 1 / -1;
+  justify-self: end;
+  margin-top: -8px;
+}
+
+.charts-grid-v2 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+}
+
+.chart-title-row-v2 h3 {
+  font-size: 15px;
+}
+
+.chart-card-copy > p {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chart-help summary {
+  width: 30px;
+  height: 30px;
+}
+
+.chart-order-btn,
+.chart-drag-handle-v2 {
+  width: 30px;
+  height: 30px;
+}
+
+.chart-tooltip-v2 {
+  font-size: 11px;
+}
+
+.chart-tooltip-v2 strong {
+  font-size: 12px;
+}
+
+.status-chip-v2 {
+  min-height: 32px;
+  padding: 5px 9px;
+  font-size: 10.5px;
+}
+
+.forecast-summary span,
+.chart-inline-status {
+  font-size: 10.5px;
+}
+
+.issues-table-v2 {
+  font-size: 11.5px;
+}
+
+.issues-table-v2 th button {
+  min-height: 34px;
+  font-size: 10px;
+}
+
+.issues-table-v2 td {
+  padding-block: 8px;
+}
+
+.issues-search-wrap input,
+.result-count,
+.issues-pagination-v2 {
+  font-size: 11.5px;
+}
+
+.sticky-col-0 {
+  box-shadow: 6px 0 12px -11px rgba(0, 0, 0, .9);
+}
+
+.settings-section-v2 h3 {
+  font-size: 14px;
+}
+
+.settings-section-v2 > p,
+.settings-section-heading p,
+.confirm-card p {
+  font-size: 11.5px;
+}
+
+.connection-field > label,
+.settings-note,
+.project-checklist-v2 label {
+  font-size: 11px;
+}
+
+.connection-status {
+  font-size: 10.5px;
+}
+
+.login-card-v2 {
+  width: min(440px, 100%);
+}
+
+.google-signin-slot > div {
+  max-width: 100%;
+}
+
+.login-brand p,
+.demo-btn {
+  font-size: 12px;
+}
+
+.login-security-note {
+  font-size: 10.5px;
+}
+
+@media (max-width: 1080px) {
+  .charts-grid-v2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 880px) {
+  .filter-desktop-actions {
+    display: none;
+  }
+
+  .filter-panel.expanded .filter-mobile-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 7px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(148, 163, 184, .08);
+  }
+}
+
+@media (max-width: 600px) {
+  .app-container-v2 {
+    padding-inline: 12px;
+  }
+
+  .dashboard-header {
+    margin: -10px -2px 10px;
+    padding: 8px 2px 7px;
+  }
+
+  .app-bar {
+    gap: 8px;
+  }
+
+  .brand-block {
+    gap: 8px;
+  }
+
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .brand-name {
+    font-size: 15px;
+  }
+
+  .brand-context {
+    max-width: 128px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sync-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .action-btn,
+  .icon-action {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .auto-refresh-desktop {
+    display: none;
+  }
+
+  .auto-refresh-mobile {
+    display: flex;
+    flex: 0 0 auto;
+  }
+
+  .auto-refresh-mobile select {
+    width: 68px;
+    min-height: 38px;
+    padding-block: 7px;
+  }
+
+  .preset-nav-row {
+    gap: 5px;
+  }
+
+  .preset-tab,
+  .preset-add-btn {
+    min-height: 40px;
+    padding-block: 8px;
+    font-size: 11px;
+  }
+
+  .filter-heading-actions {
+    flex-wrap: nowrap;
+  }
+
+  .filter-mobile-toggle,
+  .filter-mobile-actions .subtle-btn,
+  .filter-field select,
+  .filter-field input,
+  .multiselect-btn,
+  .quick-ranges button,
+  .settings-section-v2 input,
+  .settings-section-v2 select,
+  .preset-form-v2 input,
+  .preset-form-v2 select,
+  .modal-footer-v2 button,
+  .preset-form-actions-v2 button,
+  .issues-pagination-v2 button,
+  .issues-toolbar-v2 .subtle-btn {
+    min-height: 44px;
+  }
+
+  .kpi-grid-v2 {
+    gap: 8px;
+  }
+
+  .kpi-card-v2 {
+    min-height: 100px;
+    padding: 12px;
+  }
+
+  .kpi-label-v2 {
+    font-size: 10.5px;
+  }
+
+  .kpi-value-v2 {
+    font-size: 22px;
+  }
+
+  .kpi-context {
+    font-size: 10.5px;
+  }
+
+  .health-factor-top {
+    font-size: 10px;
+  }
+
+  .health-factor-value-v2 {
+    font-size: 12px;
+  }
+
+  .health-export-error {
+    justify-self: stretch;
+    margin-top: 0;
+  }
+
+  .chart-card-header {
+    flex-wrap: wrap;
+  }
+
+  .chart-card-copy {
+    flex: 1 1 100%;
+  }
+
+  .chart-card-actions {
+    max-width: none;
+    margin-left: auto;
+  }
+
+  .chart-card-body .recharts-responsive-container {
+    height: 250px !important;
+  }
+
+  .chart-empty {
+    min-height: 220px;
+  }
+
+  .status-chip-v2 {
+    min-height: 40px;
+    padding-inline: 11px;
+    font-size: 11px;
+  }
+
+  .forecast-summary span {
+    font-size: 10px;
+  }
+
+  .issues-table-v2 th.sticky-col-1,
+  .issues-table-v2 td.sticky-col-1 {
+    position: static !important;
+    left: auto !important;
+  }
+
+  .issues-search-wrap input,
+  .issues-pagination-v2,
+  .result-count {
+    font-size: 12px;
+  }
+
+  .modal-card-v2 {
+    max-height: 96dvh;
+  }
+
+  .login-card-v2 {
+    padding: 20px;
+  }
+
+  .google-signin-slot {
+    overflow: hidden;
+  }
+}
