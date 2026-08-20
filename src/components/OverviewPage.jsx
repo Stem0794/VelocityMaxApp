@@ -9,8 +9,8 @@ function pulseCopy(score) {
   return ['Delivery needs attention.', 'Use the signals below to find where work is slowing down or becoming less predictable.'];
 }
 
-function completion(total, completed) {
-  return total ? Math.round((completed / total) * 100) : 0;
+function deliveryRate(total, delivered) {
+  return total ? Math.round((delivered / total) * 100) : 0;
 }
 
 export default function OverviewPage({ metrics, issues, team, presetName, budgetData, budgetError, budgetConfigured, onNavigate, onOpenScope }) {
@@ -36,7 +36,7 @@ export default function OverviewPage({ metrics, issues, team, presetName, budget
       </section>
 
       <section className="metric-ribbon" aria-label="Key metrics">
-        <div><span>Completion</span><strong>{completion(metrics.totalIssues, metrics.completedIssues)}%</strong><small>{metrics.completedIssues} of {metrics.totalIssues} issues</small></div>
+        <div><span>Delivery rate</span><strong>{deliveryRate(metrics.totalIssues, metrics.completedIssues)}%</strong><small>{metrics.completedIssues} of {metrics.totalIssues} issues delivered</small></div>
         <div><span>Delivered</span><strong>{metrics.completedPoints}</strong><small>story points</small></div>
         <div><span>Cycle time</span><strong>{metrics.avgCycleTime == null ? '—' : `${metrics.avgCycleTime}d`}</strong><small>{metrics.medianCycleTime == null ? 'No median yet' : `Median ${metrics.medianCycleTime}d`}</small></div>
         <div><span>In scope</span><strong>{metrics.totalIssues}</strong><small>issues tracked</small></div>
@@ -45,7 +45,7 @@ export default function OverviewPage({ metrics, issues, team, presetName, budget
       <section className="overview-signals">
         <div className="section-intro"><span>Signals</span><h2>What stands out</h2><p>VelocityMAX surfaces the strongest and weakest parts of the current delivery system.</p></div>
         <div className="signal-grid">
-          <article className="signal-card positive"><span>Strongest signal</span><strong>{strongest?.label || 'No signal yet'}</strong><p>{strongest ? `${strongest.value} · score ${strongest.score}/100` : 'More completed work is needed before this can be scored.'}</p></article>
+          <article className="signal-card positive"><span>Strongest signal</span><strong>{strongest?.label || 'No signal yet'}</strong><p>{strongest ? `${strongest.value} · score ${strongest.score}/100` : 'More delivered work is needed before this can be scored.'}</p></article>
           <article className="signal-card attention"><span>Needs attention</span><strong>{weakest?.label || 'No signal yet'}</strong><p>{weakest ? `${weakest.value} · score ${weakest.score}/100` : 'No weak signal is available in this scope.'}</p></article>
         </div>
       </section>
