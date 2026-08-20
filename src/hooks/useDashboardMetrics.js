@@ -11,15 +11,15 @@ function median(values) {
   return sorted.length % 2 ? sorted[mid] : Math.round(((sorted[mid - 1] + sorted[mid]) / 2) * 10) / 10;
 }
 
-export default function useDashboardMetrics(issues, lastUpdated, workflowStates = []) {
-  const velocityData = useMemo(() => computeVelocityWithTrend(issues, lastUpdated), [issues, lastUpdated]);
-  const leadTimeHistogram = useMemo(() => computeLeadTimeHistogram(issues), [issues]);
-  const flowEfficiency = useMemo(() => computeFlowEfficiency(issues), [issues]);
+export default function useDashboardMetrics(issues, lastUpdated, workflowStates = [], deliveredIssues = []) {
+  const velocityData = useMemo(() => computeVelocityWithTrend(deliveredIssues, lastUpdated), [deliveredIssues, lastUpdated]);
+  const leadTimeHistogram = useMemo(() => computeLeadTimeHistogram(deliveredIssues), [deliveredIssues]);
+  const flowEfficiency = useMemo(() => computeFlowEfficiency(deliveredIssues), [deliveredIssues]);
   const predictionResult = useMemo(() => computePrediction(issues, velocityData, lastUpdated), [issues, lastUpdated, velocityData]);
   const cumulativeFlowData = useMemo(() => computeCumulativeFlow(issues, lastUpdated), [issues, lastUpdated]);
   const burnupData = useMemo(() => computeBurnupData(issues), [issues]);
 
-  const cycleTimeData = useMemo(() => issues
+  const cycleTimeData = useMemo(() => deliveredIssues
     .filter(issue => issue.completedAt && Number.isFinite(Number(issue.cycleTimeDays)))
     .map(issue => ({
       completed: new Date(issue.completedAt).getTime(),
@@ -29,7 +29,7 @@ export default function useDashboardMetrics(issues, lastUpdated, workflowStates 
       points: Number(issue.points) || 0,
     }))
     .filter(point => Number.isFinite(point.completed))
-    .sort((a, b) => a.completed - b.completed), [issues]);
+    .sort((a, b) => a.completed - b.completed), [deliveredIssues]);
 
   const uniqueCycles = useMemo(() => {
     const map = new Map();
@@ -58,18 +58,18 @@ export default function useDashboardMetrics(issues, lastUpdated, workflowStates 
 
   const cycleComparison = useMemo(() => uniqueCycles.slice(0, 8).map(cycle => {
     const cycleIssues = issues.filter(issue => String(issue.cycleNumber) === String(cycle.number));
-    const completed = cycleIssues.filter(issue => issue.completedAt);
-    const cycleTimes = completed.map(issue => Number(issue.cycleTimeDays)).filter(Number.isFinite);
+    const delivered = deliveredIssues.filter(issue => String(issue.cycleNumber) === String(cycle.number));
+    const cycleTimes = delivered.map(issue => Number(issue.cycleTimeDays)).filter(Number.isFinite);
     return {
       label: `C${cycle.number}${cycle.number === currentCycleNumber ? ' •' : ''}`,
-      points: completed.reduce((sum, issue) => sum + (Number(issue.points) || 0), 0),
-      tickets: completed.length,
+      points: delivered.reduce((sum, issue) => sum + (Number(issue.points) || 0), 0),
+      tickets: delivered.length,
       avgCycleTime: cycleTimes.length
         ? Math.round((cycleTimes.reduce((sum, value) => sum + value, 0) / cycleTimes.length) * 10) / 10
         : 0,
-      completionPct: cycleIssues.length ? Math.round((completed.length / cycleIssues.length) * 100) : 0,
+      completionPct: cycleIssues.length ? Math.round((delivered.length / cycleIssues.length) * 100) : 0,
     };
-  }).reverse(), [currentCycleNumber, issues, uniqueCycles]);
+  }).reverse(), [currentCycleNumber, deliveredIssues, issues, uniqueCycles]);
 
   const allStatuses = useMemo(() => workflowStates.length
     ? [...workflowStates]
@@ -80,6 +80,7 @@ export default function useDashboardMetrics(issues, lastUpdated, workflowStates 
   const totalPoints = issues.reduce((sum, issue) => sum + (Number(issue.points) || 0), 0);
   const completedPoints = issues.filter(issue => issue.completedAt)
     .reduce((sum, issue) => sum + (Number(issue.points) || 0), 0);
+  const deliveredWindowPoints = deliveredIssues.reduce((sum, issue) => sum + (Number(issue.points) || 0), 0);
   const cycleValues = cycleTimeData.map(point => point.cycleTime);
   const avgCycleTime = cycleValues.length
     ? Math.round((cycleValues.reduce((sum, value) => sum + value, 0) / cycleValues.length) * 10) / 10
@@ -126,6 +127,8 @@ export default function useDashboardMetrics(issues, lastUpdated, workflowStates 
   return {
     velocityData, leadTimeHistogram, flowEfficiency, predictionResult, cumulativeFlowData, burnupData,
     cycleTimeData, uniqueCycles, currentCycleNumber, cycleComparison, allStatuses,
-    totalIssues, completedIssues, totalPoints, completedPoints, avgCycleTime, medianCycleTime, healthScore,
+    totalIssues, completedIssues, totalPoints, completedPoints,
+    deliveredWindowIssues: deliveredIssues.length, deliveredWindowPoints,
+    avgCycleTime, medianCycleTime, healthScore,
   };
 }
