@@ -1,5 +1,6 @@
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { axisProps, ChartGrid, ChartTooltip, EmptyChart } from './ChartPrimitives';
+import { axisProps } from './chartConfig';
+import { ChartGrid, ChartTooltip, EmptyChart } from './ChartPrimitives';
 
 export default function FlowEfficiencyChart({ data }) {
   if (!data) return <EmptyChart>Not enough data to calculate flow efficiency.</EmptyChart>;
