@@ -9,7 +9,7 @@ function FilterActions({ filters, onSaveDefaults, canSaveDefaults }) {
         <RotateCcw size={14} aria-hidden="true" /> Reset
       </button>
       <button className="subtle-btn" type="button" onClick={onSaveDefaults} disabled={!canSaveDefaults || Boolean(filters.rangeError)}>
-        <Save size={14} aria-hidden="true" /> Save defaults
+        <Save size={14} aria-hidden="true" /> Save default
       </button>
     </>
   );
@@ -27,14 +27,14 @@ export default function DashboardFilters({ filters, onSaveDefaults, canSaveDefau
         <div>
           <div className="section-eyebrow">Scope</div>
           <div className="filter-title-row">
-            <h2>Filters</h2>
-            {filters.activeFilterCount ? <span className="filter-count">{filters.activeFilterCount} active</span> : null}
+            <h2>Focus the view</h2>
+            {filters.activeFilterCount ? <span className="filter-count">{filters.activeFilterCount}</span> : null}
           </div>
         </div>
         <div className="filter-heading-actions">
           <button className="filter-mobile-toggle" type="button" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}>
             <Filter size={15} aria-hidden="true" />
-            {expanded ? 'Hide' : 'Show'} filters
+            {expanded ? 'Close' : 'Filters'}
           </button>
           <div className="filter-desktop-actions">
             <FilterActions filters={filters} onSaveDefaults={onSaveDefaults} canSaveDefaults={canSaveDefaults} />
@@ -43,21 +43,21 @@ export default function DashboardFilters({ filters, onSaveDefaults, canSaveDefau
       </div>
 
       <div className="filter-controls">
-        <div className="filter-field filter-field-wide">
+        <div className="filter-field">
           <label htmlFor="filter-project">Project</label>
           <select id="filter-project" value={filters.selectedProject} onChange={event => filters.setSelectedProject(event.target.value)}>
             <option value="All">All projects</option>
             {filters.uniqueProjects.map(project => <option key={project}>{project}</option>)}
           </select>
         </div>
-        <div className="filter-field filter-field-wide">
+        <div className="filter-field">
           <label htmlFor="filter-assignee">Assignee</label>
           <select id="filter-assignee" value={filters.selectedAssignee} onChange={event => filters.setSelectedAssignee(event.target.value)}>
             <option value="All">All assignees</option>
             {filters.uniqueAssignees.map(assignee => <option key={assignee}>{assignee}</option>)}
           </select>
         </div>
-        <div className="filter-field filter-field-wide">
+        <div className="filter-field">
           <label>Status</label>
           <MultiSelectDropdown
             options={filters.uniqueCurrentStatuses}
@@ -90,6 +90,7 @@ export default function DashboardFilters({ filters, onSaveDefaults, canSaveDefau
           <input id="filter-to" type="date" value={filters.dateTo} onChange={event => filters.setDateTo(event.target.value)} aria-invalid={Boolean(filters.rangeError)} />
         </div>
       </div>
+
       <div className="filter-mobile-actions">
         <FilterActions filters={filters} onSaveDefaults={onSaveDefaults} canSaveDefaults={canSaveDefaults} />
       </div>

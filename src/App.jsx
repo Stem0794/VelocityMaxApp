@@ -5,7 +5,6 @@ import DashboardCharts from './components/DashboardCharts';
 import DashboardFilters from './components/DashboardFilters';
 import DashboardHeader from './components/DashboardHeader';
 import HealthScore from './components/HealthScore';
-import KpiGrid from './components/KpiGrid';
 import { resolveActivePreset } from './dashboardState';
 import useDashboardData from './hooks/useDashboardData';
 import useDashboardFilters from './hooks/useDashboardFilters';
@@ -73,11 +72,19 @@ function LoginScreen({ onAuthenticated, onDemo }) {
   return (
     <main className="login-screen-v2">
       <section className="login-card-v2">
-        <div className="login-brand"><div className="brand-mark">VM</div><div><h1>VelocityMAX</h1><p>Engineering delivery metrics in one dashboard.</p></div></div>
+        <div className="login-brand">
+          <div className="brand-mark" aria-hidden="true"><span /></div>
+          <div><h1>VelocityMAX</h1><p>Delivery intelligence, without the noise.</p></div>
+        </div>
+        <div className="login-intro">
+          <div className="section-eyebrow">Engineering analytics</div>
+          <h2>See the flow. Find the friction.</h2>
+          <p>Velocity, cycle time, delivery health and budget signals in one focused workspace.</p>
+        </div>
         <div id="google-signin-btn" className="google-signin-slot" />
         {authError ? <p className="inline-error" role="alert">{authError}</p> : null}
         <div className="login-divider"><span>or</span></div>
-        <button className="demo-btn" type="button" onClick={onDemo}>Explore with demo data</button>
+        <button className="demo-btn" type="button" onClick={onDemo}>Explore demo workspace</button>
         <p className="login-security-note">Google sign-in limits dashboard access. API keys remain stored locally in your browser.</p>
       </section>
     </main>
@@ -90,7 +97,7 @@ function LoadingScreen({ presetName }) {
       <div className="loading-state-v2">
         <div className="loader" />
         <strong>Loading {presetName || 'dashboard'}…</strong>
-        <span>Fetching the core dataset. Issue history will continue in the dashboard.</span>
+        <span>Core delivery data arrives first. Issue history continues loading in the workspace.</span>
       </div>
     </main>
   );
@@ -172,7 +179,7 @@ export default function App() {
       <main className="login-screen-v2">
         <section className="error-state-v2">
           <AlertTriangle size={24} aria-hidden="true" />
-          <h1>Could not load the dashboard</h1>
+          <h1>Could not load the workspace</h1>
           <p>{dashboard.error}</p>
           <div>
             <button type="button" onClick={dashboard.retry}><RefreshCw size={15} aria-hidden="true" /> Retry</button>
@@ -188,7 +195,9 @@ export default function App() {
     totalIssues: metrics.totalIssues,
     completedIssues: metrics.completedIssues,
     totalPoints: metrics.totalPoints,
+    completedPoints: metrics.completedPoints,
     avgCycleTime: metrics.avgCycleTime,
+    medianCycleTime: metrics.medianCycleTime,
   };
 
   return (
@@ -213,11 +222,10 @@ export default function App() {
         <main className="dashboard-main-v2">
           {dashboard.error ? <div className="inline-warning" role="status"><AlertTriangle size={15} aria-hidden="true" />Refresh failed: {dashboard.error}. Existing data is still shown.</div> : null}
           {dashboard.historyWarning ? <div className="inline-warning" role="status"><AlertTriangle size={15} aria-hidden="true" />{dashboard.historyWarning}</div> : null}
+          <HealthScore healthScore={metrics.healthScore} presetName={activePreset?.name} team={dashboard.data?.team} metrics={snapshotMetrics} />
           <DashboardFilters filters={filters} onSaveDefaults={saveFilterDefaults} canSaveDefaults={Boolean(activePreset)} />
           <BudgetOverview budgetData={dashboard.budgetData} error={dashboard.budgetError} configured={Boolean(activePreset?.everhourProjectIds?.length)} />
-          <KpiGrid totalIssues={metrics.totalIssues} completedIssues={metrics.completedIssues} totalPoints={metrics.totalPoints} completedPoints={metrics.completedPoints} avgCycleTime={metrics.avgCycleTime} medianCycleTime={metrics.medianCycleTime} />
-          <HealthScore healthScore={metrics.healthScore} presetName={activePreset?.name} team={dashboard.data?.team} metrics={snapshotMetrics} />
-          {!filters.filteredIssues.length ? <section className="dashboard-empty-state"><h2>No issues in this scope</h2><p>Adjust the filters or choose another preset. Charts that can render empty datasets remain available below.</p></section> : null}
+          {!filters.filteredIssues.length ? <section className="dashboard-empty-state"><div className="section-eyebrow">Current scope</div><h2>No issues found</h2><p>Adjust the scope or choose another workspace. Analytics that support empty datasets remain available.</p></section> : null}
           <DashboardCharts metrics={metrics} issues={filters.filteredIssues} selectedStatuses={filters.selectedStatuses} setSelectedStatuses={filters.setSelectedStatuses} loadingHistory={dashboard.loadingHistory} historyProgress={dashboard.historyProgress} />
         </main>
       </div>

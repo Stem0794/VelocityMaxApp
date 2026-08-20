@@ -130,16 +130,23 @@ export default function DashboardCharts({ metrics, issues, selectedStatuses, set
     }
   };
 
+  const customized = JSON.stringify(chartOrder) !== JSON.stringify(DEFAULT_CHART_ORDER);
+
   return (
-    <>
-      <div className="charts-grid-v2">{chartOrder.map(renderChart)}</div>
-      {JSON.stringify(chartOrder) !== JSON.stringify(DEFAULT_CHART_ORDER) ? (
-        <div className="chart-order-reset">
-          <button className="subtle-btn" type="button" onClick={() => { localStorage.removeItem('vmChartOrder'); setChartOrder(DEFAULT_CHART_ORDER); }}>
-            <RotateCcw size={14} aria-hidden="true" /> Reset chart order
-          </button>
+    <section className="analytics-section" aria-label="Delivery analytics">
+      <div className="content-section-heading">
+        <div>
+          <div className="section-eyebrow">Signals</div>
+          <h2>Delivery analytics</h2>
+          <p>Trends and flow diagnostics for the active scope.</p>
         </div>
-      ) : null}
-    </>
+        {customized ? (
+          <button className="subtle-btn" type="button" onClick={() => { localStorage.removeItem('vmChartOrder'); setChartOrder(DEFAULT_CHART_ORDER); }}>
+            <RotateCcw size={14} aria-hidden="true" /> Reset order
+          </button>
+        ) : null}
+      </div>
+      <div className="charts-grid-v2">{chartOrder.map(renderChart)}</div>
+    </section>
   );
 }
