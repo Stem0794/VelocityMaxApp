@@ -1,5 +1,6 @@
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { axisProps, ChartGrid, ChartTooltip } from './ChartPrimitives';
+import { axisProps } from './chartConfig';
+import { ChartGrid, ChartTooltip } from './ChartPrimitives';
 
 export default function LeadTimeChart({ data }) {
   return (

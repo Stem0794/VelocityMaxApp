@@ -1,5 +1,6 @@
 import { Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { axisProps, ChartGrid, ChartTooltip } from './ChartPrimitives';
+import { axisProps } from './chartConfig';
+import { ChartGrid, ChartTooltip } from './ChartPrimitives';
 
 export default function PredictionChart({ data }) {
   return (
