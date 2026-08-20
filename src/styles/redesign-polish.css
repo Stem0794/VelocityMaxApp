@@ -237,6 +237,21 @@ button:active {
   }
 }
 
+@media (max-width: 880px) {
+  .filter-desktop-actions {
+    display: none;
+  }
+
+  .filter-panel.expanded .filter-mobile-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 7px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(148, 163, 184, .08);
+  }
+}
+
 @media (max-width: 600px) {
   .app-container-v2 {
     padding-inline: 12px;
@@ -312,19 +327,6 @@ button:active {
 
   .filter-heading-actions {
     flex-wrap: nowrap;
-  }
-
-  .filter-desktop-actions {
-    display: none;
-  }
-
-  .filter-panel.expanded .filter-mobile-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 7px;
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid rgba(148, 163, 184, .08);
   }
 
   .filter-mobile-toggle,
