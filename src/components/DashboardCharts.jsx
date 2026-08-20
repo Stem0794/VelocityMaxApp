@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { computeSprintBurndown } from '../computeCharts';
 import { DEFAULT_CHART_ORDER, normalizeChartOrder } from '../dashboardState';
 import IssuesTable from '../IssuesTable';
+import { prepareSprintBurndownIssues } from '../utils/sprintBurndown';
 import ChartCard from './ChartCard';
 import BurnupChart from './charts/BurnupChart';
 import BurndownChart from './charts/BurndownChart';
@@ -74,10 +75,10 @@ export default function DashboardCharts({
     }
   }, [burndownCycles, currentBurndownCycle]);
 
-  const burndownData = useMemo(() => computeSprintBurndown(burndownIssues, selectedCycle), [burndownIssues, selectedCycle]);
-  const selectedCycleIssues = useMemo(() => burndownIssues.filter(issue => String(issue.cycleNumber) === String(selectedCycle)), [burndownIssues, selectedCycle]);
-  const burndownUsesPoints = selectedCycleIssues.some(issue => (Number(issue.points) || 0) > 0);
-  const burndownUnit = burndownUsesPoints ? 'points' : 'issues';
+  const preparedBurndown = useMemo(() => prepareSprintBurndownIssues(burndownIssues, selectedCycle), [burndownIssues, selectedCycle]);
+  const burndownData = useMemo(() => computeSprintBurndown(preparedBurndown.issues, selectedCycle), [preparedBurndown, selectedCycle]);
+  const burndownUnit = preparedBurndown.unit;
+  const burndownUsesPoints = burndownUnit === 'points';
 
   const statusBreakdownData = useMemo(() => {
     const statuses = selectedStatuses.length ? selectedStatuses : metrics.allStatuses;
