@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { detectQuickRange, getQuickRangeDates, isValidDateRange } from '../utils/date';
 import { reconcileStatuses } from '../dashboardState';
 
@@ -13,6 +13,7 @@ export default function useDashboardFilters(data, activePreset) {
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [dateFrom, setDateFrom] = useState(() => sessionStorage.getItem('vmDateFrom') || '');
   const [dateTo, setDateTo] = useState(() => sessionStorage.getItem('vmDateTo') || '');
+  const previousPresetId = useRef(null);
 
   const uniqueProjects = useMemo(() => [...new Set((data?.issues || []).map(issue => issue.project).filter(Boolean))].sort(), [data]);
   const uniqueAssignees = useMemo(() => [...new Set((data?.issues || []).map(issue => issue.assignee).filter(Boolean))].sort(), [data]);
@@ -31,12 +32,27 @@ export default function useDashboardFilters(data, activePreset) {
 
   useEffect(() => {
     if (!activePreset) return;
+    const hadPreset = previousPresetId.current !== null;
+    const switchedPreset = hadPreset && previousPresetId.current !== activePreset.id;
+    previousPresetId.current = activePreset.id;
+
     setSelectedProject('All');
     setSelectedAssignee('All');
-    setSelectedCurrentStatuses(activePreset.defaultStatuses || []);
-    setDateFrom(activePreset.defaultDateFrom || '');
-    setDateTo(activePreset.defaultDateTo || '');
+    if (switchedPreset || activePreset.defaultStatuses !== undefined) {
+      setSelectedCurrentStatuses(activePreset.defaultStatuses || []);
+    }
+    if (switchedPreset || activePreset.defaultDateFrom !== undefined) {
+      setDateFrom(activePreset.defaultDateFrom || '');
+    }
+    if (switchedPreset || activePreset.defaultDateTo !== undefined) {
+      setDateTo(activePreset.defaultDateTo || '');
+    }
   }, [activePreset]);
+
+  useEffect(() => {
+    if (!uniqueCurrentStatuses.length) return;
+    setSelectedCurrentStatuses(previous => previous.filter(status => uniqueCurrentStatuses.includes(status)));
+  }, [uniqueCurrentStatuses]);
 
   useEffect(() => sessionStorage.setItem('vmStatusFilter', JSON.stringify(selectedCurrentStatuses)), [selectedCurrentStatuses]);
   useEffect(() => {
