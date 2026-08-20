@@ -49,6 +49,12 @@ export default function ProductShell({
   onAddPreset,
   onOpenScope,
   activeFilterCount,
+  loadedIssueCount,
+  scopeIssueCount,
+  deliveredIssueCount,
+  deliveryWindowActive,
+  deliveryWindowLabel,
+  isLinearWorkspace,
   onSettings,
   onSignOut,
   onRefresh,
@@ -102,7 +108,16 @@ export default function ProductShell({
       <div className="product-stage">
         <header className="product-topbar">
           <div className="mobile-brand"><span className="product-brand-mark">VM</span><strong>VelocityMAX</strong></div>
-          <div className="page-heading"><span>{team || 'Engineering'}</span><h1>{title}</h1><p>{subtitle}</p></div>
+          <div className="page-heading">
+            <span>{team || 'Engineering'}</span>
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
+            <div className="scope-summary" aria-label="Workspace issue counts">
+              <span><strong>{loadedIssueCount}</strong> loaded {isLinearWorkspace ? 'from Linear' : 'from source'}</span>
+              <span><strong>{scopeIssueCount}</strong> in inventory scope</span>
+              {deliveryWindowActive ? <span><strong>{deliveredIssueCount}</strong> delivered · {deliveryWindowLabel}</span> : null}
+            </div>
+          </div>
           <div className="topbar-actions">
             <button type="button" className="scope-action" onClick={onOpenScope}><SlidersHorizontal size={17} /> Scope{activeFilterCount ? <b>{activeFilterCount}</b> : null}</button>
             <button type="button" className="square-action" onClick={onRefresh} disabled={refreshing} aria-label="Refresh data" title="Refresh data"><RefreshCw size={18} className={refreshing ? 'spin-icon' : ''} /></button>
