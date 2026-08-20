@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [ui-redesign-foundations, ui/pixel-polish]
+    branches: [ui-redesign-foundations]
 permissions:
   contents: read
 jobs:
