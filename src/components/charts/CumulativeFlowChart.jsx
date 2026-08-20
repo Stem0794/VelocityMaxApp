@@ -1,5 +1,6 @@
 import { Area, AreaChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { axisProps, ChartGrid, ChartTooltip, EmptyChart } from './ChartPrimitives';
+import { axisProps } from './chartConfig';
+import { ChartGrid, ChartTooltip, EmptyChart } from './ChartPrimitives';
 
 export default function CumulativeFlowChart({ data }) {
   if (!data.length) return <EmptyChart>No cumulative-flow data available.</EmptyChart>;

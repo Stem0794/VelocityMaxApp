@@ -1,5 +1,6 @@
 import { CartesianGrid, Cell, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
-import { axisProps, ChartTooltip, EmptyChart } from './ChartPrimitives';
+import { axisProps } from './chartConfig';
+import { ChartTooltip, EmptyChart } from './ChartPrimitives';
 
 export default function CycleTimesChart({ data }) {
   if (!data.length) return <EmptyChart>No cycle-time data in the current scope.</EmptyChart>;
