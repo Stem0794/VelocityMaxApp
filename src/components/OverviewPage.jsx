@@ -13,7 +13,10 @@ function deliveryRate(total, delivered) {
   return total ? Math.round((delivered / total) * 100) : 0;
 }
 
-export default function OverviewPage({ metrics, issues, team, presetName, budgetData, budgetError, budgetConfigured, onNavigate, onOpenScope }) {
+export default function OverviewPage({
+  metrics, issues, team, presetName, budgetData, budgetError, budgetConfigured,
+  deliveryWindowLabel, onNavigate, onOpenScope,
+}) {
   const score = metrics.healthScore?.overall ?? 0;
   const [headline, body] = pulseCopy(score);
   const factors = metrics.healthScore?.factors || [];
@@ -36,10 +39,10 @@ export default function OverviewPage({ metrics, issues, team, presetName, budget
       </section>
 
       <section className="metric-ribbon" aria-label="Key metrics">
-        <div><span>Delivery rate</span><strong>{deliveryRate(metrics.totalIssues, metrics.completedIssues)}%</strong><small>{metrics.completedIssues} of {metrics.totalIssues} issues delivered</small></div>
-        <div><span>Delivered</span><strong>{metrics.completedPoints}</strong><small>story points</small></div>
-        <div><span>Cycle time</span><strong>{metrics.avgCycleTime == null ? '—' : `${metrics.avgCycleTime}d`}</strong><small>{metrics.medianCycleTime == null ? 'No median yet' : `Median ${metrics.medianCycleTime}d`}</small></div>
-        <div><span>In scope</span><strong>{metrics.totalIssues}</strong><small>issues tracked</small></div>
+        <div><span>Delivery rate</span><strong>{deliveryRate(metrics.totalIssues, metrics.completedIssues)}%</strong><small>{metrics.completedIssues} of {metrics.totalIssues} issues delivered overall</small></div>
+        <div><span>Delivered</span><strong>{metrics.deliveredWindowPoints}</strong><small>{metrics.deliveredWindowIssues} issues · {deliveryWindowLabel || 'All time'}</small></div>
+        <div><span>Cycle time</span><strong>{metrics.avgCycleTime == null ? '—' : `${metrics.avgCycleTime}d`}</strong><small>{metrics.medianCycleTime == null ? `No deliveries · ${deliveryWindowLabel || 'All time'}` : `Median ${metrics.medianCycleTime}d · ${deliveryWindowLabel || 'All time'}`}</small></div>
+        <div><span>In scope</span><strong>{metrics.totalIssues}</strong><small>current inventory</small></div>
       </section>
 
       <section className="overview-signals">
@@ -53,7 +56,7 @@ export default function OverviewPage({ metrics, issues, team, presetName, budget
       {budgetConfigured || budgetError ? <BudgetOverview budgetData={budgetData} error={budgetError} configured={budgetConfigured} /> : null}
 
       <section className="overview-section">
-        <div className="section-intro"><span>Trend</span><h2>Delivery momentum</h2><p>Two views only: recent throughput and the forecast for remaining scope.</p></div>
+        <div className="section-intro"><span>Trend</span><h2>Delivery momentum</h2><p>Throughput uses deliveries in {deliveryWindowLabel || 'the selected window'}; forecast keeps the full remaining inventory in scope.</p></div>
         <DashboardCharts metrics={metrics} issues={issues} selectedStatuses={[]} setSelectedStatuses={() => {}} loadingHistory={false} historyProgress={{ done: 0, total: 0, failed: 0 }} visibleIds={['velocity', 'prediction']} reorderable={false} />
       </section>
 
