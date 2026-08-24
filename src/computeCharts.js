@@ -123,9 +123,8 @@ export function computeCumulativeFlow(issues, asOfDate) {
   const latestIssueDate = new Date(Math.max(...withCreated.flatMap(issue => [issue.createdAt, issue.completedAt, issue.canceledAt]
     .map(value => validDate(value)?.getTime()).filter(Number.isFinite))));
   const maxDate = requestedEnd < latestIssueDate ? latestIssueDate : requestedEnd;
-  const startDate = new Date(minDate);
-  startDate.setHours(0, 0, 0, 0);
-  startDate.setDate(startDate.getDate() - ((startDate.getDay() + 6) % 7));
+  const startDate = new Date(Date.UTC(minDate.getUTCFullYear(), minDate.getUTCMonth(), minDate.getUTCDate()));
+  startDate.setUTCDate(startDate.getUTCDate() - ((startDate.getUTCDay() + 6) % 7));
 
   const result = [];
   for (let cursor = new Date(startDate); cursor <= maxDate; cursor = new Date(cursor.getTime() + 7 * 86400000)) {

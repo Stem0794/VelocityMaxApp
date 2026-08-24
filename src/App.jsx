@@ -168,6 +168,7 @@ export default function App() {
   const sharedMetricProps = {
     metrics,
     issues: filters.scopeIssues,
+    burndownIssues: filters.cycleScopeIssues,
     selectedStatuses: filters.selectedStatuses,
     setSelectedStatuses: filters.setSelectedStatuses,
     loadingHistory: dashboard.loadingHistory,
